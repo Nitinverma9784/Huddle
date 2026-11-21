@@ -22,7 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { CalendarIcon, Upload, Check, Copy } from 'lucide-react'
+import { CalendarIcon, Upload, Check, Copy, Mail } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { WhatsAppIcon } from '@/components/icons/whatsapp-icon'
 import { cn } from '@/lib/utils'
 import { scheduleSessionWithInvites } from '@/app/dashboard/sessions/schedule-action'
 import { toast } from 'sonner'
@@ -146,14 +148,50 @@ export function ScheduleDialog({
               )}
             </div>
 
+            {/* QR Code */}
+            <div className="flex flex-col items-center justify-center p-3 bg-muted/20 border rounded-xl gap-2">
+              <div className="bg-white p-2.5 rounded-xl shadow-xs border">
+                <QRCodeSVG value={completedInfo.joinUrl} size={140} />
+              </div>
+              <div className="text-[11px] text-muted-foreground text-center">
+                Scan with phone camera to join
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs">Public Join Link</Label>
               <div className="flex gap-2">
                 <Input value={completedInfo.joinUrl} readOnly className="font-mono text-xs" />
-                <Button size="icon" variant="outline" onClick={handleCopyLink}>
-                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                <Button size="icon" variant="outline" onClick={handleCopyLink} title="Copy Link">
+                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
+            </div>
+
+            {/* Quick Share Buttons */}
+            <div className="flex gap-2">
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(`Join my scheduled quiz "${quizTitle}" on Huddle! 🚀\n\nRoom Code: ${completedInfo.roomCode}\nDirect Link: ${completedInfo.joinUrl}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'flex-1 gap-1.5 text-xs font-semibold border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer'
+                )}
+              >
+                <WhatsAppIcon className="h-3.5 w-3.5 fill-current" />
+                <span>WhatsApp</span>
+              </a>
+              <a
+                href={`mailto:?subject=${encodeURIComponent(`Invitation to quiz: ${quizTitle}`)}&body=${encodeURIComponent(`Hi,\n\nYou're invited to join my quiz "${quizTitle}" on Huddle!\n\nRoom Code: ${completedInfo.roomCode}\nDirect Link: ${completedInfo.joinUrl}\n\nSee you there!`)}`}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'flex-1 gap-1.5 text-xs font-semibold hover:bg-muted cursor-pointer'
+                )}
+              >
+                <Mail className="h-3.5 w-3.5 text-primary" />
+                <span>Email</span>
+              </a>
             </div>
 
             <DialogFooter className="pt-2">

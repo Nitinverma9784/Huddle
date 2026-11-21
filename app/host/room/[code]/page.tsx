@@ -31,7 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/avatar'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { ScreenShare, Smartphone, ArrowLeft, Loader2, Trophy } from 'lucide-react'
+import { ScreenShare, Smartphone, ArrowLeft, Loader2, Trophy, Copy } from 'lucide-react'
 import Link from 'next/link'
 
 interface PageProps {
@@ -569,8 +569,21 @@ export default function HostRoomPage({ params }: PageProps) {
           >
             <ArrowLeft className="h-4 w-4" /> Exit
           </Link>
-          <div className="font-bold text-sm tracking-tight hidden sm:block">
-            {quiz?.title} <span className="font-mono text-muted-foreground font-normal">({roomCode})</span>
+          <div className="font-bold text-sm tracking-tight hidden sm:flex items-center gap-2">
+            <span>{quiz?.title}</span>
+            <span className="font-mono text-muted-foreground font-normal">({roomCode})</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              title="Copy join link"
+              onClick={() => {
+                navigator.clipboard.writeText(joinUrl)
+                toast.success('Join link copied to clipboard!')
+              }}
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
           </div>
         </div>
 

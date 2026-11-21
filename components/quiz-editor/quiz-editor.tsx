@@ -53,8 +53,10 @@ import {
   Clock,
   Award,
   Loader2,
+  Play,
 } from 'lucide-react'
 import { saveQuizWithQuestions, regenerateQuestionAction } from '@/app/dashboard/quizzes/[id]/actions'
+import { createLiveSession } from '@/app/dashboard/sessions/actions'
 import { toast } from 'sonner'
 import Link from 'next/link'
 
@@ -444,6 +446,26 @@ export function QuizEditor({ initialQuiz, initialQuestions }: QuizEditorProps) {
     }
   }
 
+  const [startingLive, setStartingLive] = useState(false)
+
+  const handleStartLive = async () => {
+    if (!quiz.title.trim()) {
+      toast.error('Quiz title cannot be empty')
+      return
+    }
+    try {
+      setStartingLive(true)
+      await handleSave()
+      const session = await createLiveSession(quiz.id)
+      toast.success(`Live room created: ${session.room_code}`)
+      router.push(`/host/room/${session.room_code}`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to launch live session'
+      toast.error(msg)
+      setStartingLive(false)
+    }
+  }
+
   return (
     <div className="space-y-6 pb-20 max-w-4xl mx-auto">
       {/* Top Header Actions */}
@@ -454,17 +476,36 @@ export function QuizEditor({ initialQuiz, initialQuestions }: QuizEditorProps) {
         >
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </Link>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" /> Save Changes
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleStartLive}
+            disabled={saving || startingLive}
+            className="gap-2 border-primary/30 text-primary hover:bg-primary/10"
+          >
+            {startingLive ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Launching...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 fill-primary" /> Host Live
+              </>
+            )}
+          </Button>
+          <Button onClick={handleSave} disabled={saving || startingLive} className="gap-2">
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" /> Save Changes
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Quiz-Wide Settings Card */}

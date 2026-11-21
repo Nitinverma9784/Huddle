@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import confetti from 'canvas-confetti'
 import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/avatar'
@@ -14,7 +15,14 @@ import {
   CheckCircle2,
   Crown,
   Medal,
+  Copy,
+  Check,
+  Mail,
+  Share2,
 } from 'lucide-react'
+import { WhatsAppIcon } from '@/components/icons/whatsapp-icon'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 export interface PresenterQuestion {
   id?: string
@@ -65,6 +73,24 @@ export function PresenterView({
   autoAdvanceSeconds = null,
 }: PresenterViewProps) {
   const confettiTriggered = useRef(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(joinUrl)
+      setCopiedLink(true)
+      toast.success('Join link copied to clipboard!')
+      setTimeout(() => setCopiedLink(false), 2500)
+    } catch {
+      toast.error('Failed to copy link')
+    }
+  }
+
+  const shareText = `Join my live quiz "${quizTitle}" on Huddle! 🚀\n\nRoom Code: ${roomCode}\nDirect Link: ${joinUrl}`
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`
+  const mailSubject = `Join live quiz: ${quizTitle}`
+  const mailBody = `Hi,\n\nYou're invited to join my live multiplayer quiz "${quizTitle}" on Huddle!\n\nRoom Code: ${roomCode}\nJoin Link: ${joinUrl}\n\nJoin with your phone or browser to participate live.\n\nSee you there!`
+  const mailtoUrl = `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`
 
   // Fire confetti on podium
   useEffect(() => {
@@ -103,18 +129,66 @@ export function PresenterView({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-8 bg-card border shadow-lg rounded-3xl p-8 max-w-xl w-full">
-            <div className="bg-white p-3 rounded-2xl shadow-sm border">
-              <QRCodeSVG value={joinUrl} size={180} />
+          <div className="flex flex-col items-center gap-6 bg-card border shadow-lg rounded-3xl p-6 sm:p-8 max-w-xl w-full">
+            <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 w-full justify-center">
+              <div className="bg-white p-3 rounded-2xl shadow-sm border shrink-0">
+                <QRCodeSVG value={joinUrl} size={175} />
+              </div>
+              <div className="flex flex-col items-center sm:items-start space-y-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                  Join at <span className="text-foreground underline break-all">{joinUrl.replace(/^https?:\/\//, '')}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">or enter room code:</div>
+                <div className="font-mono text-5xl font-black tracking-widest text-primary bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20">
+                  {roomCode}
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col items-center sm:items-start space-y-3">
-              <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Join at <span className="text-foreground underline">{joinUrl.replace(/^https?:\/\//, '')}</span>
-              </div>
-              <div className="text-xs text-muted-foreground">or enter room code:</div>
-              <div className="font-mono text-5xl font-black tracking-widest text-primary bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20">
-                {roomCode}
-              </div>
+
+            {/* Quick Share Action Bar */}
+            <div className="w-full pt-5 border-t border-border/60 flex flex-wrap items-center justify-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyLink}
+                className="gap-2 rounded-xl text-xs font-semibold h-9 px-4 hover:bg-muted transition-colors cursor-pointer"
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-500" />
+                    <span className="text-emerald-500 font-bold">Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    <span>Copy Link</span>
+                  </>
+                )}
+              </Button>
+
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'gap-2 rounded-xl text-xs font-semibold h-9 px-4 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:border-emerald-500 transition-colors cursor-pointer'
+                )}
+              >
+                <WhatsAppIcon className="h-4 w-4 fill-current" />
+                <span>WhatsApp</span>
+              </a>
+
+              <a
+                href={mailtoUrl}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'gap-2 rounded-xl text-xs font-semibold h-9 px-4 hover:bg-muted transition-colors cursor-pointer'
+                )}
+              >
+                <Mail className="h-4 w-4 text-primary" />
+                <span>Email</span>
+              </a>
             </div>
           </div>
 
