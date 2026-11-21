@@ -3,14 +3,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateRoomCode } from '@/lib/room-code'
 import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
 import { generateIcsCalendar } from '@/lib/email/ics'
-import { sendEmailViaSendgrid } from '@/lib/email/sendgrid'
+import { sendEmailViaEmailJS } from '@/lib/email/emailjs'
 
 // Run on Vercel Edge Runtime for maximum performance and global low-latency execution
 export const runtime = 'edge'
 
 /**
  * POST /api/schedule
- * Edge Function to schedule a live quiz session and dispatch SendGrid invitations with ICS calendar attachments.
+ * Edge Function to schedule a live quiz session and dispatch EmailJS invitations with ICS calendar attachments.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       }))
       await supabase.from('invites').insert(invitesData)
 
-      // 5. Generate ICS calendar attachment & dispatch via SendGrid API
+      // 5. Generate ICS calendar attachment & dispatch via EmailJS
       try {
         const icsContent = await generateIcsCalendar({
           title: quiz.title,
@@ -107,9 +107,14 @@ export async function POST(req: NextRequest) {
             : btoa(unescape(encodeURIComponent(icsContent)))
 
         for (const recipient of uniqueEmails) {
-          await sendEmailViaSendgrid({
+          await sendEmailViaEmailJS({
             to: recipient,
             subject: `Invitation: ${quiz.title} on Huddle`,
+            quizTitle: quiz.title,
+            hostName,
+            scheduledAt,
+            timezone,
+            joinUrl,
             html: renderInviteHtml({
               quizTitle: quiz.title,
               hostName,
@@ -134,7 +139,7 @@ export async function POST(req: NextRequest) {
           })
         }
       } catch (emailErr) {
-        console.warn('[Edge Schedule] SendGrid dispatch warning (non-fatal):', emailErr)
+        console.warn('[Edge Schedule] EmailJS dispatch warning (non-fatal):', emailErr)
       }
     }
 
@@ -155,7 +160,7 @@ export async function POST(req: NextRequest) {
 /**
  * GET /api/schedule
  * On-demand Vercel Edge reminder check.
- * Dispatches SendGrid reminders for sessions starting in the next 24 hours without requiring any background cron job!
+ * Dispatches EmailJS reminders for sessions starting in the next 24 hours without requiring any background cron job!
  */
 export async function GET(req: NextRequest) {
   try {
@@ -282,9 +287,14 @@ export async function GET(req: NextRequest) {
 
       for (const invite of invites) {
         if (invite.status === 'sent') {
-          const res = await sendEmailViaSendgrid({
+          const res = await sendEmailViaEmailJS({
             to: invite.email,
             subject: `Reminder: "${quiz?.title || 'Live Quiz'}" is starting soon on Huddle!`,
+            quizTitle: quiz?.title || 'Live Quiz',
+            hostName: 'Your Host',
+            scheduledAt: session.scheduled_at,
+            timezone: session.timezone || 'UTC',
+            joinUrl,
             html: renderInviteHtml({
               quizTitle: quiz?.title || 'Live Quiz',
               hostName: 'Your Host',

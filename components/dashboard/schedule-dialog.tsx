@@ -92,7 +92,7 @@ export function ScheduleDialog({
         .map((e) => e.trim())
         .filter(Boolean)
 
-      // Call Vercel Edge Function directly for global low-latency execution and SendGrid invites
+      // Call Vercel Edge Function directly for global low-latency execution and EmailJS invites
       const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

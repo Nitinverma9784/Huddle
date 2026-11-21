@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generateRoomCode } from '@/lib/room-code'
-import { sendEmailViaSendgrid } from '@/lib/email/sendgrid'
+import { sendEmailViaEmailJS } from '@/lib/email/emailjs'
 import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
 import { generateIcsCalendar } from '@/lib/email/ics'
 import { revalidatePath } from 'next/cache'
@@ -73,7 +73,7 @@ export async function scheduleSessionWithInvites(input: ScheduleSessionInput) {
     }))
     await supabase.from('invites').insert(invitesData)
 
-    // Dispatch email invitations with ICS calendar attachment via SendGrid API
+    // Dispatch email invitations with ICS calendar attachment via EmailJS
     try {
       const icsContent = await generateIcsCalendar({
         title: quiz.title,
@@ -86,9 +86,14 @@ export async function scheduleSessionWithInvites(input: ScheduleSessionInput) {
       const icsBase64 = Buffer.from(icsContent).toString('base64')
 
       for (const email of uniqueEmails) {
-        await sendEmailViaSendgrid({
+        await sendEmailViaEmailJS({
           to: email,
           subject: `Invitation: ${quiz.title} on Huddle`,
+          quizTitle: quiz.title,
+          hostName,
+          scheduledAt: input.scheduledAt,
+          timezone: input.timezone,
+          joinUrl,
           html: renderInviteHtml({
             quizTitle: quiz.title,
             hostName,
@@ -113,7 +118,7 @@ export async function scheduleSessionWithInvites(input: ScheduleSessionInput) {
         })
       }
     } catch (err) {
-      console.warn('[Schedule Action] SendGrid email delivery warning (non-fatal):', err)
+      console.warn('[Schedule Action] EmailJS email delivery warning (non-fatal):', err)
     }
   }
 

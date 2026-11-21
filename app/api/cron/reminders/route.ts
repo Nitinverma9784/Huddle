@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmailViaSendgrid } from '@/lib/email/sendgrid'
+import { sendEmailViaEmailJS } from '@/lib/email/emailjs'
 import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
 
 // Run on Vercel Edge Runtime
@@ -50,9 +50,14 @@ export async function GET(req: NextRequest) {
 
       for (const invite of invites) {
         if (invite.status === 'sent') {
-          const res = await sendEmailViaSendgrid({
+          const res = await sendEmailViaEmailJS({
             to: invite.email,
             subject: `Reminder: "${quiz?.title || 'Quiz'}" is starting soon on Huddle!`,
+            quizTitle: quiz?.title || 'Live Quiz',
+            hostName: 'Your Host',
+            scheduledAt: session.scheduled_at,
+            timezone: session.timezone || 'UTC',
+            joinUrl,
             html: renderInviteHtml({
               quizTitle: quiz?.title || 'Live Quiz',
               hostName: 'Your Host',
@@ -87,7 +92,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       runtime: 'vercel-edge',
-      provider: 'sendgrid',
+      provider: 'emailjs',
       remindersSent,
       checkedSessions: sessions.length,
     })

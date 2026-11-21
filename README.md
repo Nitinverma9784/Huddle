@@ -35,9 +35,9 @@ With Huddle, hosts can generate full-fledged quizzes in seconds from AI prompts 
 - **Dynamic shadcn Progress Bars**: Real-time score filling bars styled with podium tier colors (gold, silver, bronze, primary).
 - **Growing Podium Pedestals**: Kahoot-style animated 3-step podium where 3rd, 2nd, and 1st place pedestals rise sequentially (`animate-pedestal`) with crown bounce and confetti bursts.
 
-### 4. 📅 Scheduling & Email Invites (Vercel Edge & SendGrid)
+### 4. 📅 Scheduling & Email Invites (Vercel Edge & EmailJS)
 - **Scheduled Sessions**: Plan quizzes ahead with timezone support and date-time pickers.
-- **Email Invites & ICS Attachments**: Send calendar invitations powered by **SendGrid API** with 1-click join links and `.ics` calendar files.
+- **Email Invites & ICS Attachments**: Send calendar invitations powered by **EmailJS** with 1-click join links and `.ics` calendar files.
 - **Vercel Edge Scheduling (No Cron Required)**: High-performance on-demand Edge Functions (`/api/schedule`) handle session creation, invite delivery, and reminder dispatches globally with zero cold starts, completely removing the need for an external cron job or paid Vercel Cron tier.
 
 ### 5. 📊 Post-Quiz Analytics & CSV Export
@@ -64,7 +64,7 @@ With Huddle, hosts can generate full-fledged quizzes in seconds from AI prompts 
 | **Storage** | Supabase Storage (Document uploads, Quiz covers, Avatars) |
 | **AI Providers** | Google Gemini 2.5 Flash, Groq (Llama 3.3 70B), OpenRouter with automatic fallback chain |
 | **Document Parsers** | `pdf-parse`, `mammoth` (DOCX), XML-based PPTX text parser |
-| **Email & Calendar** | [SendGrid](https://sendgrid.com/) v3 API & `ics` calendar generator |
+| **Email & Calendar** | [EmailJS](https://www.emailjs.com/) REST API & `ics` calendar generator |
 | **Icons & Visuals** | `lucide-react`, `canvas-confetti`, `qrcode.react`, `@dnd-kit` |
 | **Testing** | Node.js Test Runner + `tsx` (Unit, Validation, Simulation tests) |
 
@@ -136,10 +136,11 @@ GEMINI_API_KEY=your-gemini-key
 GROQ_API_KEY=your-groq-key
 OPENROUTER_API_KEY=your-openrouter-key
 
-# Email & Scheduled Invites (SendGrid API)
-SENDGRID_API_KEY=your-sendgrid-api-key
-SENDGRID_FROM_EMAIL=invites@huddle.live
-SENDGRID_FROM_NAME=Huddle
+# Email & Scheduled Invites (EmailJS REST API)
+EMAILJS_SERVICE_ID=service_xxxxxxx
+EMAILJS_TEMPLATE_ID=template_xxxxxxx
+EMAILJS_PUBLIC_KEY=your_emailjs_public_key
+EMAILJS_PRIVATE_KEY=your_emailjs_private_key # optional access token
 ```
 
 ### 4. Database Setup

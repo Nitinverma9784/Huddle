@@ -1,41 +1,51 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { sendEmailViaSendgrid } from '../lib/email/sendgrid'
+import { sendEmailViaEmailJS } from '../lib/email/emailjs'
 import { generateIcsCalendar } from '../lib/email/ics'
 
-describe('SendGrid & Edge Email Service', () => {
-  test('gracefully skips sending when SENDGRID_API_KEY is not set', async () => {
-    const originalKey = process.env.SENDGRID_API_KEY
-    delete process.env.SENDGRID_API_KEY
+describe('EmailJS & Edge Email Service', () => {
+  test('gracefully skips sending when EmailJS keys are not set', async () => {
+    const origService = process.env.EMAILJS_SERVICE_ID
+    const origTemplate = process.env.EMAILJS_TEMPLATE_ID
+    const origKey = process.env.EMAILJS_PUBLIC_KEY
+    delete process.env.EMAILJS_SERVICE_ID
+    delete process.env.EMAILJS_TEMPLATE_ID
+    delete process.env.EMAILJS_PUBLIC_KEY
 
     try {
-      const res = await sendEmailViaSendgrid({
+      const res = await sendEmailViaEmailJS({
         to: 'student@example.com',
         subject: 'Quiz Invitation',
-        html: '<p>Join my quiz</p>',
+        quizTitle: 'Live Quiz',
       })
 
       assert.equal(res.success, false)
       assert.equal(res.skipped, true)
-      assert.equal(res.error, 'SENDGRID_API_KEY not configured')
+      assert.equal(res.error, 'EmailJS environment variables not configured')
     } finally {
-      if (originalKey) process.env.SENDGRID_API_KEY = originalKey
+      if (origService) process.env.EMAILJS_SERVICE_ID = origService
+      if (origTemplate) process.env.EMAILJS_TEMPLATE_ID = origTemplate
+      if (origKey) process.env.EMAILJS_PUBLIC_KEY = origKey
     }
   })
 
   test('rejects delivery if recipient list is empty or invalid', async () => {
-    process.env.SENDGRID_API_KEY = 'SG.mock_test_key'
+    process.env.EMAILJS_SERVICE_ID = 'service_test'
+    process.env.EMAILJS_TEMPLATE_ID = 'template_test'
+    process.env.EMAILJS_PUBLIC_KEY = 'user_test_key'
+
     try {
-      const res = await sendEmailViaSendgrid({
+      const res = await sendEmailViaEmailJS({
         to: ['', 'not-an-email'],
         subject: 'Quiz Invitation',
-        html: '<p>Join my quiz</p>',
       })
 
       assert.equal(res.success, false)
       assert.equal(res.error, 'No valid recipient email addresses provided')
     } finally {
-      delete process.env.SENDGRID_API_KEY
+      delete process.env.EMAILJS_SERVICE_ID
+      delete process.env.EMAILJS_TEMPLATE_ID
+      delete process.env.EMAILJS_PUBLIC_KEY
     }
   })
 
