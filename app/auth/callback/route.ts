@@ -7,15 +7,20 @@ export async function GET(request: Request) {
   const next = searchParams.get('next') ?? '/dashboard'
 
   // Determine correct base URL (handles Vercel reverse-proxy headers)
-  const forwardedHost = request.headers.get('x-forwarded-host')
-  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0].trim()
+  const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0].trim() || 'https'
+  const host = request.headers.get('host')
   const isLocalEnv = process.env.NODE_ENV === 'development'
 
   let redirectBase = origin
   if (forwardedHost && !isLocalEnv) {
     redirectBase = `${forwardedProto}://${forwardedHost}`
   } else if (process.env.NEXT_PUBLIC_SITE_URL && !isLocalEnv) {
-    redirectBase = process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')
+    let siteUrl = process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')
+    if (!siteUrl.startsWith('http')) siteUrl = `https://${siteUrl}`
+    redirectBase = siteUrl
+  } else if (host && !isLocalEnv && !host.includes('localhost')) {
+    redirectBase = `${forwardedProto}://${host}`
   }
 
   // Security: only allow relative URLs for redirection to prevent open redirect vulnerabilities

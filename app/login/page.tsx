@@ -14,11 +14,22 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true)
-      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      // Determine origin dynamically from active window location, fallback to env variable
+      let origin = typeof window !== 'undefined' ? window.location.origin : ''
+      if (!origin && process.env.NEXT_PUBLIC_SITE_URL) {
+        origin = process.env.NEXT_PUBLIC_SITE_URL
+      }
+      if (origin && !origin.startsWith('http://') && !origin.startsWith('https://')) {
+        origin = `https://${origin}`
+      }
+      origin = origin.replace(/\/$/, '')
+
+      const redirectTo = `${origin}/auth/callback`
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${origin}/auth/callback`,
+          redirectTo,
         },
       })
       if (error) {
