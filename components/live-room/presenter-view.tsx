@@ -55,6 +55,7 @@ interface PresenterViewProps {
   joinUrl: string
   countdownSeconds?: number
   autoAdvanceSeconds?: number | null
+  scheduledAt?: string | null
 }
 
 export function PresenterView({
@@ -71,9 +72,39 @@ export function PresenterView({
   joinUrl,
   countdownSeconds = 5,
   autoAdvanceSeconds = null,
+  scheduledAt = null,
 }: PresenterViewProps) {
   const confettiTriggered = useRef(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [scheduledCountdown, setScheduledCountdown] = useState<string>('')
+
+  // Live countdown ticker for scheduled sessions
+  useEffect(() => {
+    if (!scheduledAt || (status !== 'lobby' && status !== 'scheduled')) return
+
+    const updateScheduledTicker = () => {
+      const diff = new Date(scheduledAt).getTime() - Date.now()
+      if (diff <= 0) {
+        setScheduledCountdown('Starting now...')
+      } else {
+        const totalSecs = Math.floor(diff / 1000)
+        const hours = Math.floor(totalSecs / 3600)
+        const mins = Math.floor((totalSecs % 3600) / 60)
+        const secs = totalSecs % 60
+        if (hours > 0) {
+          setScheduledCountdown(`${hours}h ${mins}m ${secs}s`)
+        } else if (mins > 0) {
+          setScheduledCountdown(`${mins}m ${secs}s`)
+        } else {
+          setScheduledCountdown(`${secs}s`)
+        }
+      }
+    }
+
+    updateScheduledTicker()
+    const timer = setInterval(updateScheduledTicker, 1000)
+    return () => clearInterval(timer)
+  }, [scheduledAt, status])
 
   const handleCopyLink = async () => {
     try {
@@ -117,15 +148,25 @@ export function PresenterView({
   return (
     <div className="flex flex-col min-h-[80vh] justify-between p-6 max-w-6xl mx-auto">
       {/* 1. LOBBY VIEW */}
-      {status === 'lobby' && (
+      {(status === 'lobby' || status === 'scheduled') && (
         <div className="flex flex-col items-center justify-center space-y-8 my-auto text-center">
-          <div className="space-y-2">
-            <Badge variant="outline" className="px-3 py-1 text-sm font-semibold">
-              Live Multiplayer Room
-            </Badge>
+          <div className="space-y-3">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <Badge variant="outline" className="px-3 py-1 text-sm font-semibold">
+                Live Multiplayer Room
+              </Badge>
+              {(status === 'scheduled' || scheduledAt) && (
+                <Badge variant="secondary" className="px-3 py-1 text-xs font-bold gap-1.5 bg-primary/10 text-primary border-primary/30">
+                  <Clock className="h-3.5 w-3.5" />
+                  {scheduledCountdown ? `Starts in ${scheduledCountdown}` : 'Scheduled Quiz'}
+                </Badge>
+              )}
+            </div>
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight">{quizTitle}</h1>
             <p className="text-lg text-muted-foreground">
-              Join with your phone or browser. No sign-in required!
+              {scheduledAt
+                ? `Scheduled for ${new Date(scheduledAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at ${new Date(scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Quiz starts automatically!`
+                : 'Join with your phone or browser. No sign-in required!'}
             </p>
           </div>
 

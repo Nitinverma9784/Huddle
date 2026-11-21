@@ -68,6 +68,8 @@ export default function PlayerRoomPage({ params }: PageProps) {
 
   // Game state
   const [gameStatus, setGameStatus] = useState<string>('lobby')
+  const [scheduledAt, setScheduledAt] = useState<string | null>(null)
+  const [scheduledCountdownText, setScheduledCountdownText] = useState<string>('')
   const [countdownSeconds, setCountdownSeconds] = useState(5)
   const [currentQuestion, setCurrentQuestion] = useState<PlayerQuestion | null>(null)
   const [questionIndex, setQuestionIndex] = useState(0)
@@ -231,6 +233,12 @@ export default function PlayerRoomPage({ params }: PageProps) {
       // Late-joiner instant synchronization: immediately set active game state
       if (data.session) {
         const sess = data.session
+        if (sess.scheduled_at) {
+          setScheduledAt(sess.scheduled_at)
+        }
+        if (sess.status === 'scheduled') {
+          setGameStatus('scheduled')
+        }
         const cdUntil = sess.settings?.countdown_until
           ? new Date(sess.settings.countdown_until).getTime()
           : null
@@ -300,6 +308,60 @@ export default function PlayerRoomPage({ params }: PageProps) {
     }
   }, [roomCode, handleJoin])
 
+  // 3.1 Initial room status lookup on mount (detects scheduled sessions before player joins)
+  useEffect(() => {
+    supabase
+      .from('sessions')
+      .select('status, scheduled_at')
+      .eq('room_code', roomCode)
+      .single()
+      .then(({ data }) => {
+        if (data?.scheduled_at) {
+          setScheduledAt(data.scheduled_at)
+        }
+        if (data?.status === 'scheduled') {
+          setGameStatus('scheduled')
+        }
+      })
+  }, [roomCode, supabase])
+
+  // 3.2 Scheduled countdown ticker & autonomous auto-start trigger
+  useEffect(() => {
+    if (!scheduledAt || (gameStatus !== 'lobby' && gameStatus !== 'scheduled')) return
+
+    const updateCountdown = () => {
+      const diff = new Date(scheduledAt).getTime() - Date.now()
+      if (diff <= 0) {
+        setScheduledCountdownText('Starting now...')
+        // Autonomous auto-start via edge advance endpoint
+        fetch('/api/room/advance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room_code: roomCode,
+            current_index: -1,
+          }),
+        }).catch(() => {})
+      } else {
+        const totalSeconds = Math.floor(diff / 1000)
+        const hours = Math.floor(totalSeconds / 3600)
+        const mins = Math.floor((totalSeconds % 3600) / 60)
+        const secs = totalSeconds % 60
+        if (hours > 0) {
+          setScheduledCountdownText(`${hours}h ${mins}m ${secs}s`)
+        } else if (mins > 0) {
+          setScheduledCountdownText(`${mins}m ${secs}s`)
+        } else {
+          setScheduledCountdownText(`${secs}s`)
+        }
+      }
+    }
+
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+    return () => clearInterval(interval)
+  }, [scheduledAt, gameStatus, roomCode])
+
   // 4. Active Lobby & Live Question Polling (Ensures players dynamic sync even if websocket dropped)
   const gameStatusRef = useRef(gameStatus)
   const questionIndexRef = useRef(questionIndex)
@@ -315,11 +377,18 @@ export default function PlayerRoomPage({ params }: PageProps) {
       try {
         const { data: session } = await supabase
           .from('sessions')
-          .select('status, current_question_index, question_started_at, quiz_id, settings, quizzes(default_timer_seconds)')
+          .select('status, current_question_index, question_started_at, scheduled_at, quiz_id, settings, quizzes(default_timer_seconds)')
           .eq('id', sessionIdRef.current)
           .single()
 
         if (!session) return
+
+        if (session.scheduled_at) {
+          setScheduledAt(session.scheduled_at)
+        }
+        if (session.status === 'scheduled' && gameStatusRef.current !== 'scheduled') {
+          setGameStatus('scheduled')
+        }
 
         const cdUntil = session.settings?.countdown_until
           ? new Date(session.settings.countdown_until).getTime()
@@ -690,8 +759,17 @@ export default function PlayerRoomPage({ params }: PageProps) {
               <img src="/huddle-logo.png" alt="Huddle" className="h-12 w-auto object-contain select-none" />
             </div>
             <CardTitle className="text-2xl font-black">Join Game</CardTitle>
-            <CardDescription>
-              Room: <span className="font-mono font-bold text-foreground">{roomCode}</span>
+            <CardDescription className="space-y-1">
+              <span>
+                Room: <span className="font-mono font-bold text-foreground">{roomCode}</span>
+              </span>
+              {scheduledAt && (
+                <span className="text-xs text-primary font-semibold flex items-center justify-center gap-1 pt-1">
+                  <Clock className="h-3 w-3" />
+                  Scheduled for {new Date(scheduledAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
+                  {new Date(scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
 
@@ -780,18 +858,51 @@ export default function PlayerRoomPage({ params }: PageProps) {
 
       {/* Main Body */}
       <main className="flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full py-6">
-        {/* 1. LOBBY VIEW */}
-        {gameStatus === 'lobby' && (
-          <div className="text-center space-y-4 animate-in fade-in zoom-in-95">
+        {/* 1. LOBBY / SCHEDULED VIEW */}
+        {(gameStatus === 'lobby' || gameStatus === 'scheduled') && (
+          <div className="text-center space-y-4 animate-in fade-in zoom-in-95 max-w-sm w-full mx-auto">
             <Avatar className="h-28 w-28 mx-auto border-4 border-primary shadow-2xl">
               <AvatarImage src={getAvatarUrl(selectedAvatar)} />
               <AvatarFallback>{displayName[0]}</AvatarFallback>
             </Avatar>
-            <div className="space-y-1">
+            <div className="space-y-2">
               <h2 className="text-2xl font-black">You&apos;re in!</h2>
-              <p className="text-sm text-muted-foreground animate-pulse">
-                Look at the host&apos;s screen. Game will start soon...
-              </p>
+              {scheduledAt ? (
+                <div className="space-y-3 bg-muted/40 border border-border/80 rounded-2xl p-4 shadow-xs text-center">
+                  <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-primary">
+                    <Clock className="h-4 w-4" />
+                    <span>Scheduled Quiz</span>
+                  </div>
+                  <div className="text-sm font-bold text-foreground">
+                    {new Date(scheduledAt).toLocaleDateString([], {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}{' '}
+                    at{' '}
+                    {new Date(scheduledAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {scheduledCountdownText ? (
+                      <span className="font-mono font-bold text-primary text-base block">
+                        Starts in {scheduledCountdownText}
+                      </span>
+                    ) : (
+                      'Starting soon...'
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/80">
+                    The quiz will start automatically when the timer reaches zero. Keep this page open!
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground animate-pulse">
+                  Look at the host&apos;s screen. Game will start soon...
+                </p>
+              )}
             </div>
           </div>
         )}

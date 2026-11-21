@@ -175,6 +175,63 @@ export async function GET(req: NextRequest) {
       invites?: Array<{ id: string; email: string; status: string }>
     }> = []
 
+    // 1. Auto-start any scheduled sessions that have reached scheduled_at
+    const { data: dueSessions } = await supabase
+      .from('sessions')
+      .select('id, room_code, quiz_id, scheduled_at, quizzes(default_timer_seconds)')
+      .eq('status', 'scheduled')
+      .lte('scheduled_at', now.toISOString())
+
+    let autoStartedSessions = 0
+    if (dueSessions && dueSessions.length > 0) {
+      for (const dueSession of dueSessions) {
+        const { data: questions } = await supabase
+          .from('questions')
+          .select('id, text, options, timer_seconds, order_index')
+          .eq('quiz_id', dueSession.quiz_id)
+          .order('order_index', { ascending: true })
+
+        if (questions && questions.length > 0) {
+          const startedAt = new Date().toISOString()
+          await supabase
+            .from('sessions')
+            .update({
+              status: 'live',
+              current_question_index: 0,
+              question_started_at: startedAt,
+              updated_at: startedAt,
+            })
+            .eq('id', dueSession.id)
+
+          const q0 = questions[0]
+          const q0Options = Array.isArray(q0.options)
+            ? q0.options
+            : typeof q0.options === 'string'
+            ? JSON.parse(q0.options)
+            : []
+          const defaultTimer =
+            (dueSession.quizzes as { default_timer_seconds?: number } | null)?.default_timer_seconds || 20
+          const timerSec = q0.timer_seconds || defaultTimer
+
+          const channel = supabase.channel(`room:${dueSession.room_code.toUpperCase().trim()}`)
+          await channel.send({
+            type: 'broadcast',
+            event: 'question_started',
+            payload: {
+              questionId: q0.id,
+              questionIndex: 0,
+              questionText: q0.text,
+              options: q0Options,
+              timerSeconds: timerSec,
+              startedAt,
+            },
+          })
+          await supabase.removeChannel(channel)
+          autoStartedSessions++
+        }
+      }
+    }
+
     if (sessionIdParam) {
       // Check reminders for a specific session
       const { data, error } = await supabase
@@ -263,6 +320,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       runtime: 'vercel-edge',
+      autoStartedSessions,
       remindersSent,
       checkedSessions: sessionsToProcess.length,
     })

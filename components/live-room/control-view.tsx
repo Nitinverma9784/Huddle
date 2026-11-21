@@ -123,12 +123,12 @@ export function ControlView({
         <CardContent className="p-4 space-y-4">
           {/* Main Action Buttons depending on status */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {status === 'lobby' && (
+            {(status === 'lobby' || status === 'scheduled') && (
               <Button
                 onClick={onStart}
                 className="w-full py-6 text-base font-bold gap-2 bg-green-600 hover:bg-green-700 text-white"
               >
-                <Play className="h-5 w-5 fill-current" /> Start Quiz (5s Countdown)
+                <Play className="h-5 w-5 fill-current" /> {status === 'scheduled' ? 'Start Quiz Now (5s Countdown)' : 'Start Quiz (5s Countdown)'}
               </Button>
             )}
 

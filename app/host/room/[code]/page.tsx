@@ -667,6 +667,7 @@ export default function HostRoomPage({ params }: PageProps) {
             joinUrl={joinUrl}
             countdownSeconds={countdownSeconds}
             autoAdvanceSeconds={autoAdvanceSeconds}
+            scheduledAt={session.scheduled_at}
           />
         ) : (
           <ControlView

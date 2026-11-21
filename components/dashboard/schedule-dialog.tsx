@@ -92,14 +92,28 @@ export function ScheduleDialog({
         .map((e) => e.trim())
         .filter(Boolean)
 
-      const res = await scheduleSessionWithInvites({
-        quizId,
-        scheduledAt: scheduledDate.toISOString(),
-        timezone,
-        emails,
+      // Call Vercel Edge Function directly for global low-latency execution and SendGrid invites
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quizId,
+          scheduledAt: scheduledDate.toISOString(),
+          timezone,
+          emails,
+        }),
       })
 
-      setCompletedInfo(res)
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to schedule via Edge API')
+      }
+
+      setCompletedInfo({
+        joinUrl: data.joinUrl,
+        roomCode: data.roomCode,
+        invitedCount: data.invitedCount,
+      })
       toast.success('Session scheduled successfully!')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to schedule'
