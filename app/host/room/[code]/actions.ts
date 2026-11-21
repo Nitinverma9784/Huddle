@@ -93,10 +93,18 @@ export async function startCountdownAction(sessionId: string, seconds = 5) {
   const admin = createAdminClient()
   const countdownUntil = new Date(Date.now() + seconds * 1000).toISOString()
 
+  const { data: current } = await admin
+    .from('sessions')
+    .select('settings')
+    .eq('id', sessionId)
+    .single()
+  const currentSettings = (current?.settings as Record<string, unknown>) || {}
+
   const { data, error } = await admin
     .from('sessions')
     .update({
       settings: {
+        ...currentSettings,
         countdown_until: countdownUntil,
         countdown_seconds: seconds,
       },
@@ -116,13 +124,23 @@ export async function startRoomAction(sessionId: string) {
   const admin = createAdminClient()
   const startedAt = new Date().toISOString()
 
+  const { data: current } = await admin
+    .from('sessions')
+    .select('settings')
+    .eq('id', sessionId)
+    .single()
+  const currentSettings = (current?.settings as Record<string, unknown>) || {}
+
   const { data, error } = await admin
     .from('sessions')
     .update({
       status: 'live',
       current_question_index: 0,
       question_started_at: startedAt,
-      settings: {},
+      settings: {
+        ...currentSettings,
+        stage: 'live',
+      },
       updated_at: startedAt,
     })
     .eq('id', sessionId)
@@ -168,12 +186,22 @@ export async function endQuestionAction(sessionId: string) {
     .single()
 
   if (error) {
+    const { data: current } = await admin
+      .from('sessions')
+      .select('settings')
+      .eq('id', sessionId)
+      .single()
+    const currentSettings = (current?.settings as Record<string, unknown>) || {}
+
     const fallback = await admin
       .from('sessions')
       .update({
         status: 'live',
         question_started_at: null,
-        settings: { stage: 'question_ended' },
+        settings: {
+          ...currentSettings,
+          stage: 'question_ended',
+        },
         updated_at: new Date().toISOString(),
       })
       .eq('id', sessionId)
@@ -215,6 +243,65 @@ export async function showLeaderboardAction(sessionId: string) {
   return data
 }
 
+export async function recordHostIntegrityAlert(
+  sessionId: string,
+  alert: {
+    id: string
+    playerId: string
+    playerName: string
+    action: string
+    timestamp: string
+  }
+) {
+  try {
+    const admin = createAdminClient()
+    const { data: current } = await admin
+      .from('sessions')
+      .select('settings')
+      .eq('id', sessionId)
+      .single()
+
+    const currentSettings = (current?.settings as Record<string, unknown>) || {}
+    const existingAlerts = Array.isArray(currentSettings.integrity_alerts)
+      ? (currentSettings.integrity_alerts as Array<{
+          id: string
+          playerId: string
+          playerName: string
+          action: string
+          timestamp: string
+        }>)
+      : []
+
+    const isTabSwitch =
+      alert.action.toLowerCase().includes('tab') ||
+      alert.action.toLowerCase().includes('blur') ||
+      alert.action.toLowerCase().includes('window') ||
+      alert.action.toLowerCase().includes('minimized')
+
+    const tabSwitches: Record<string, number> = {
+      ...((currentSettings.tab_switches as Record<string, number>) || {}),
+    }
+    if (alert.playerId && isTabSwitch) {
+      tabSwitches[alert.playerId] = (tabSwitches[alert.playerId] || 0) + 1
+    }
+
+    const updatedAlerts = [alert, ...existingAlerts.filter((a) => a.id !== alert.id)].slice(0, 200)
+
+    await admin
+      .from('sessions')
+      .update({
+        settings: {
+          ...currentSettings,
+          integrity_alerts: updatedAlerts,
+          tab_switches: tabSwitches,
+        },
+      })
+      .eq('id', sessionId)
+  } catch (err) {
+    console.warn('Failed to record host integrity alert:', err)
+  }
+}
+
 export async function endGameAction(
   sessionId: string,
   latestAlerts?: Array<{
@@ -228,41 +315,36 @@ export async function endGameAction(
 ) {
   const admin = createAdminClient()
 
-  let updatePayload: Record<string, unknown> = {
-    status: 'ended',
-    updated_at: new Date().toISOString(),
+  const { data: current } = await admin
+    .from('sessions')
+    .select('settings')
+    .eq('id', sessionId)
+    .single()
+
+  const currentSettings = (current?.settings as Record<string, unknown>) || {}
+  const existingAlerts = Array.isArray(currentSettings.integrity_alerts)
+    ? (currentSettings.integrity_alerts as Array<{ id: string }>)
+    : []
+
+  const mergedAlerts = [
+    ...(latestAlerts || []),
+    ...existingAlerts,
+  ].filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i).slice(0, 200)
+
+  const mergedTabSwitches = {
+    ...((currentSettings.tab_switches as Record<string, number>) || {}),
+    ...(tabSwitches || {}),
   }
 
-  if (latestAlerts?.length || (tabSwitches && Object.keys(tabSwitches).length > 0)) {
-    const { data: current } = await admin
-      .from('sessions')
-      .select('settings')
-      .eq('id', sessionId)
-      .single()
-
-    const currentSettings = (current?.settings as Record<string, unknown>) || {}
-    const existingAlerts = Array.isArray(currentSettings.integrity_alerts)
-      ? (currentSettings.integrity_alerts as Array<{ id: string }>)
-      : []
-
-    const mergedAlerts = [
-      ...(latestAlerts || []),
-      ...existingAlerts,
-    ].filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i).slice(0, 200)
-
-    const mergedTabSwitches = {
-      ...((currentSettings.tab_switches as Record<string, number>) || {}),
-      ...(tabSwitches || {}),
-    }
-
-    updatePayload = {
-      ...updatePayload,
-      settings: {
-        ...currentSettings,
-        integrity_alerts: mergedAlerts,
-        tab_switches: mergedTabSwitches,
-      },
-    }
+  const updatePayload: Record<string, unknown> = {
+    status: 'ended',
+    updated_at: new Date().toISOString(),
+    settings: {
+      ...currentSettings,
+      stage: 'ended',
+      integrity_alerts: mergedAlerts,
+      tab_switches: mergedTabSwitches,
+    },
   }
 
   const { data, error } = await admin

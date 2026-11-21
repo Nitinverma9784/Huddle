@@ -12,6 +12,7 @@ import {
   showLeaderboardAction,
   endGameAction,
   kickPlayerAction,
+  recordHostIntegrityAlert,
 } from './actions'
 import { PresenterPlayer, PresenterQuestion } from '@/components/live-room/presenter-view'
 import { RealtimeChannel } from '@supabase/supabase-js'
@@ -74,6 +75,8 @@ export default function HostRoomPage({ params }: PageProps) {
   const [remainingSeconds, setRemainingSeconds] = useState(20)
   const [tabSwitchAlerts, setTabSwitchAlerts] = useState<{ [playerId: string]: number }>({})
   const [integrityAlerts, setIntegrityAlerts] = useState<IntegrityAlert[]>([])
+  const integrityAlertsRef = useRef<IntegrityAlert[]>([])
+  const tabSwitchAlertsRef = useRef<{ [playerId: string]: number }>({})
   const [isCountingDown, setIsCountingDown] = useState(false)
   const [countdownSeconds, setCountdownSeconds] = useState(5)
   const [autoAdvance, setAutoAdvance] = useState(true)
@@ -191,10 +194,14 @@ export default function HostRoomPage({ params }: PageProps) {
       })
       .on('broadcast', { event: 'tab_switched' }, ({ payload }) => {
         if (payload?.playerId) {
-          setTabSwitchAlerts((prev) => ({
-            ...prev,
-            [payload.playerId]: (prev[payload.playerId] || 0) + 1,
-          }))
+          setTabSwitchAlerts((prev) => {
+            const next = {
+              ...prev,
+              [payload.playerId]: (prev[payload.playerId] || 0) + 1,
+            }
+            tabSwitchAlertsRef.current = next
+            return next
+          })
         }
       })
       .on('broadcast', { event: 'integrity_alert' }, ({ payload }) => {
@@ -206,12 +213,32 @@ export default function HostRoomPage({ params }: PageProps) {
             action: payload.action,
             timestamp: payload.timestamp || new Date().toLocaleTimeString(),
           }
-          setIntegrityAlerts((prev) => [newAlert, ...prev.slice(0, 49)])
+          setIntegrityAlerts((prev) => {
+            const next = [newAlert, ...prev.slice(0, 49)]
+            integrityAlertsRef.current = next
+            return next
+          })
           if (payload.playerId) {
-            setTabSwitchAlerts((prev) => ({
-              ...prev,
-              [payload.playerId]: (prev[payload.playerId] || 0) + 1,
-            }))
+            setTabSwitchAlerts((prev) => {
+              const isTab =
+                newAlert.action.toLowerCase().includes('tab') ||
+                newAlert.action.toLowerCase().includes('blur') ||
+                newAlert.action.toLowerCase().includes('window') ||
+                newAlert.action.toLowerCase().includes('minimized')
+              if (isTab) {
+                const next = {
+                  ...prev,
+                  [payload.playerId]: (prev[payload.playerId] || 0) + 1,
+                }
+                tabSwitchAlertsRef.current = next
+                return next
+              }
+              return prev
+            })
+          }
+          // Real-time server-side persistence
+          if (session?.id) {
+            recordHostIntegrityAlert(session.id, newAlert)
           }
         }
       })
@@ -402,7 +429,11 @@ export default function HostRoomPage({ params }: PageProps) {
   const handleEndGame = useCallback(async () => {
     if (!session?.id) return
     try {
-      const updated = await endGameAction(session.id, integrityAlerts, tabSwitchAlerts)
+      const updated = await endGameAction(
+        session.id,
+        integrityAlertsRef.current,
+        tabSwitchAlertsRef.current
+      )
       setSession(updated)
 
       const freshData = await getHostRoomData(roomCode)

@@ -99,13 +99,38 @@ export async function getSessionAnalytics(sessionId: string) {
     const pTotal = pAnswers.length
     const pAccuracy = pTotal > 0 ? Math.round((pCorrect / pTotal) * 100) : 0
 
-    const pAlerts = integrityAlerts.filter((a) => a.playerId === p.id)
+    const pAlerts = integrityAlerts.filter(
+      (a) =>
+        (a.playerId && a.playerId === p.id) ||
+        ((a as any).player_id && (a as any).player_id === p.id) ||
+        (a.playerName &&
+          p.display_name &&
+          a.playerName.toLowerCase().trim() === p.display_name.toLowerCase().trim())
+    )
+
     const pTabSwitches =
       tabSwitchesMap[p.id] ??
+      tabSwitchesMap[p.display_name] ??
       pAlerts.filter((a) => {
-        const act = a.action.toLowerCase()
-        return act.includes('tab') || act.includes('window') || act.includes('blur') || act.includes('minimized')
+        const act = (a.action || '').toLowerCase()
+        return (
+          act.includes('tab') ||
+          act.includes('window') ||
+          act.includes('blur') ||
+          act.includes('minimized')
+        )
       }).length
+
+    const pScreenshots = pAlerts.filter((a) => {
+      const act = (a.action || '').toLowerCase()
+      return (
+        act.includes('screenshot') ||
+        act.includes('snapshot') ||
+        act.includes('print') ||
+        act.includes('copy') ||
+        act.includes('cut')
+      )
+    }).length
 
     return {
       ...p,
@@ -114,6 +139,7 @@ export async function getSessionAnalytics(sessionId: string) {
       totalAnswered: pTotal,
       accuracy: pAccuracy,
       tabSwitches: pTabSwitches,
+      screenshots: pScreenshots,
       totalAlerts: pAlerts.length,
       alertsList: pAlerts,
     }
@@ -128,6 +154,16 @@ export async function getSessionAnalytics(sessionId: string) {
       : 0
 
   const totalTabSwitches = enrichedPlayers.reduce((acc, p) => acc + (p.tabSwitches || 0), 0)
+  const totalScreenshots = integrityAlerts.filter((a) => {
+    const act = (a.action || '').toLowerCase()
+    return (
+      act.includes('screenshot') ||
+      act.includes('snapshot') ||
+      act.includes('print') ||
+      act.includes('copy') ||
+      act.includes('cut')
+    )
+  }).length
   const totalAlertsCount = integrityAlerts.length
 
   const perQuestionStats = questions.map((q) => {
@@ -165,6 +201,7 @@ export async function getSessionAnalytics(sessionId: string) {
     avgResponseTimeSeconds: (avgResponseTimeMs / 1000).toFixed(1),
     totalPlayers: allPlayers.length,
     totalTabSwitches,
+    totalScreenshots,
     totalAlertsCount,
     integrityAlerts,
     perQuestionStats,

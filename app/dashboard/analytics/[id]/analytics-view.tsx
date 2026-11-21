@@ -32,6 +32,7 @@ import {
   Search,
   Activity,
   Laptop,
+  Camera,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -67,6 +68,7 @@ export interface PlayerRecord {
   totalAnswered?: number
   accuracy?: number
   tabSwitches?: number
+  screenshots?: number
   totalAlerts?: number
   alertsList?: IntegrityAlertRecord[]
 }
@@ -83,6 +85,7 @@ export interface AnalyticsData {
   avgResponseTimeSeconds: string
   totalPlayers: number
   totalTabSwitches?: number
+  totalScreenshots?: number
   totalAlertsCount?: number
   integrityAlerts?: IntegrityAlertRecord[]
   perQuestionStats: QuestionStat[]
@@ -98,6 +101,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
     avgResponseTimeSeconds,
     totalPlayers,
     totalTabSwitches = 0,
+    totalScreenshots = 0,
     totalAlertsCount = 0,
     integrityAlerts = [],
     perQuestionStats,
@@ -106,6 +110,27 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
 
   const [activeActivityTab, setActiveActivityTab] = useState<'all' | 'tab' | 'screenshot' | 'devtools'>('all')
   const [playerSearchQuery, setPlayerSearchQuery] = useState('')
+
+  const screenshotAlertsCount = integrityAlerts.filter((a) => {
+    const act = (a.action || '').toLowerCase()
+    return (
+      act.includes('screenshot') ||
+      act.includes('snapshot') ||
+      act.includes('print') ||
+      act.includes('copy') ||
+      act.includes('cut')
+    )
+  }).length
+
+  const devtoolsAlertsCount = integrityAlerts.filter((a) => {
+    const act = (a.action || '').toLowerCase()
+    return (
+      act.includes('devtools') ||
+      act.includes('inspect') ||
+      act.includes('context menu') ||
+      act.includes('right click')
+    )
+  }).length
 
   const handleExportCsv = () => {
     try {
@@ -117,6 +142,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         'Wrong Questions',
         'Accuracy %',
         'Tab Switches',
+        'Screenshots / Copy',
         'Total Suspicious Flags',
         'Avatar ID',
       ]
@@ -128,6 +154,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         p.incorrectCount ?? 0,
         `${p.accuracy ?? 0}%`,
         p.tabSwitches ?? 0,
+        p.screenshots ?? 0,
         p.totalAlerts ?? 0,
         p.avatar,
       ])
@@ -154,15 +181,31 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
     // Filter by type
     const actionLower = alert.action.toLowerCase()
     if (activeActivityTab === 'tab') {
-      if (!actionLower.includes('tab') && !actionLower.includes('blur') && !actionLower.includes('window') && !actionLower.includes('minimized')) {
+      if (
+        !actionLower.includes('tab') &&
+        !actionLower.includes('blur') &&
+        !actionLower.includes('window') &&
+        !actionLower.includes('minimized')
+      ) {
         return false
       }
     } else if (activeActivityTab === 'screenshot') {
-      if (!actionLower.includes('screenshot') && !actionLower.includes('copy') && !actionLower.includes('print')) {
+      if (
+        !actionLower.includes('screenshot') &&
+        !actionLower.includes('snapshot') &&
+        !actionLower.includes('copy') &&
+        !actionLower.includes('print') &&
+        !actionLower.includes('cut')
+      ) {
         return false
       }
     } else if (activeActivityTab === 'devtools') {
-      if (!actionLower.includes('devtools') && !actionLower.includes('inspect') && !actionLower.includes('context menu') && !actionLower.includes('right click')) {
+      if (
+        !actionLower.includes('devtools') &&
+        !actionLower.includes('inspect') &&
+        !actionLower.includes('context menu') &&
+        !actionLower.includes('right click')
+      ) {
         return false
       }
     }
@@ -175,7 +218,9 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
     return true
   })
 
-  const cleanPlayerCount = players.filter((p) => (p.tabSwitches ?? 0) === 0 && (p.totalAlerts ?? 0) === 0).length
+  const cleanPlayerCount = players.filter(
+    (p) => (p.tabSwitches ?? 0) === 0 && (p.screenshots ?? 0) === 0 && (p.totalAlerts ?? 0) === 0
+  ).length
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-16">
@@ -257,11 +302,16 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
             <Eye className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black flex items-center gap-2">
+            <div className="text-2xl font-black flex items-center gap-2 flex-wrap">
               <span>{totalTabSwitches}</span>
               <span className="text-xs font-medium text-muted-foreground">switches</span>
+              {totalScreenshots > 0 && (
+                <Badge variant="destructive" className="text-[10px] font-mono px-1.5 py-0 gap-1">
+                  <Camera className="h-2.5 w-2.5" /> {totalScreenshots} {totalScreenshots === 1 ? 'screenshot' : 'screenshots'}
+                </Badge>
+              )}
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground mt-1">
               {cleanPlayerCount} of {players.length} players stayed 100% focused
             </p>
           </CardContent>
@@ -419,30 +469,43 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {(p.tabSwitches ?? 0) > 0 ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
-                        title={`${p.tabSwitches} tab switch / window blur event(s) recorded`}
-                      >
-                        <AlertTriangle className="h-3 w-3" /> {p.tabSwitches} {p.tabSwitches === 1 ? 'switch' : 'switches'}
-                      </Badge>
-                    ) : (p.totalAlerts ?? 0) > 0 ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
-                        title={`${p.totalAlerts} suspicious activity flag(s)`}
-                      >
-                        <ShieldAlert className="h-3 w-3" /> {p.totalAlerts} flagged
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
-                      >
-                        <ShieldCheck className="h-3 w-3" /> Clean
-                      </Badge>
-                    )}
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      {(p.screenshots ?? 0) > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                          title={`${p.screenshots} screenshot/copy attempt(s)`}
+                        >
+                          <Camera className="h-3 w-3" /> {p.screenshots} {p.screenshots === 1 ? 'screenshot' : 'screenshots'}
+                        </Badge>
+                      )}
+                      {(p.tabSwitches ?? 0) > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                          title={`${p.tabSwitches} tab switch / window blur event(s) recorded`}
+                        >
+                          <AlertTriangle className="h-3 w-3" /> {p.tabSwitches} {p.tabSwitches === 1 ? 'switch' : 'switches'}
+                        </Badge>
+                      )}
+                      {(p.totalAlerts ?? 0) > 0 && (p.screenshots ?? 0) === 0 && (p.tabSwitches ?? 0) === 0 && (
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                          title={`${p.totalAlerts} suspicious activity flag(s)`}
+                        >
+                          <ShieldAlert className="h-3 w-3" /> {p.totalAlerts} flagged
+                        </Badge>
+                      )}
+                      {(p.tabSwitches ?? 0) === 0 && (p.screenshots ?? 0) === 0 && (p.totalAlerts ?? 0) === 0 && (
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                        >
+                          <ShieldCheck className="h-3 w-3" /> Clean
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-sm text-primary pr-4">
                     {p.score.toLocaleString()} pts
@@ -497,7 +560,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                 onClick={() => setActiveActivityTab('screenshot')}
                 className="text-xs h-7 px-3 rounded-full gap-1"
               >
-                <AlertCircle className="h-3 w-3" /> Screenshots / Copy
+                <Camera className="h-3 w-3" /> Screenshots / Copy ({screenshotAlertsCount})
               </Button>
               <Button
                 variant={activeActivityTab === 'devtools' ? 'default' : 'outline'}
@@ -505,7 +568,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                 onClick={() => setActiveActivityTab('devtools')}
                 className="text-xs h-7 px-3 rounded-full gap-1"
               >
-                <ShieldAlert className="h-3 w-3" /> Inspect / DevTools
+                <ShieldAlert className="h-3 w-3" /> Inspect / DevTools ({devtoolsAlertsCount})
               </Button>
             </div>
 
@@ -535,15 +598,25 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
           ) : (
             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
               {filteredAlerts.map((alert) => {
+                const actLower = alert.action.toLowerCase()
                 const isTabSwitch =
-                  alert.action.toLowerCase().includes('tab') ||
-                  alert.action.toLowerCase().includes('window') ||
-                  alert.action.toLowerCase().includes('blur') ||
-                  alert.action.toLowerCase().includes('minimized')
+                  actLower.includes('tab') ||
+                  actLower.includes('window') ||
+                  actLower.includes('blur') ||
+                  actLower.includes('minimized')
+
+                const isScreenshot =
+                  actLower.includes('screenshot') ||
+                  actLower.includes('snapshot') ||
+                  actLower.includes('print') ||
+                  actLower.includes('copy') ||
+                  actLower.includes('cut')
 
                 const isDevTools =
-                  alert.action.toLowerCase().includes('devtools') ||
-                  alert.action.toLowerCase().includes('inspect')
+                  actLower.includes('devtools') ||
+                  actLower.includes('inspect') ||
+                  actLower.includes('context menu') ||
+                  actLower.includes('right click')
 
                 return (
                   <div
@@ -551,13 +624,15 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                     className="flex items-center justify-between p-3 rounded-xl border bg-card hover:bg-muted/30 transition-colors text-xs"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground font-bold">
-                        {isTabSwitch ? (
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground font-bold shrink-0">
+                        {isScreenshot ? (
+                          <Camera className="h-3.5 w-3.5 text-rose-500" />
+                        ) : isTabSwitch ? (
                           <Laptop className="h-3.5 w-3.5 text-amber-500" />
                         ) : isDevTools ? (
-                          <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+                          <ShieldAlert className="h-3.5 w-3.5 text-purple-500" />
                         ) : (
-                          <AlertTriangle className="h-3.5 w-3.5 text-purple-500" />
+                          <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
                         )}
                       </div>
                       <div>
@@ -572,11 +647,13 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                         <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
                           <span
                             className={
-                              isTabSwitch
+                              isScreenshot
+                                ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                                : isTabSwitch
                                 ? 'text-amber-600 dark:text-amber-400 font-medium'
                                 : isDevTools
-                                ? 'text-rose-600 dark:text-rose-400 font-medium'
-                                : 'text-purple-600 dark:text-purple-400 font-medium'
+                                ? 'text-purple-600 dark:text-purple-400 font-medium'
+                                : 'text-orange-600 dark:text-orange-400 font-medium'
                             }
                           >
                             {alert.action}
@@ -584,7 +661,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                         </div>
                       </div>
                     </div>
-                    <span className="font-mono text-[11px] text-muted-foreground">
+                    <span className="font-mono text-[11px] text-muted-foreground shrink-0">
                       {alert.timestamp}
                     </span>
                   </div>

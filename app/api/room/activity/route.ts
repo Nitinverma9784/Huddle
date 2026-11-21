@@ -3,17 +3,22 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(req: NextRequest) {
   try {
-    const { room_code, player_id, player_name, action } = await req.json()
-    if (!room_code || !action) {
+    const body = await req.json()
+    const { room_code, session_id, player_id, player_name, action } = body
+    if ((!room_code && !session_id) || !action) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
-    const { data: session, error: sessionError } = await supabase
-      .from('sessions')
-      .select('id, settings, current_question_index')
-      .eq('room_code', room_code.toUpperCase().trim())
-      .single()
+    let query = supabase.from('sessions').select('id, settings, current_question_index')
+
+    if (session_id) {
+      query = query.eq('id', session_id)
+    } else if (room_code) {
+      query = query.eq('room_code', room_code.toUpperCase().trim())
+    }
+
+    const { data: session, error: sessionError } = await query.single()
 
     if (sessionError || !session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })

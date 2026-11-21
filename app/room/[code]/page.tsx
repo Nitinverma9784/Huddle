@@ -487,7 +487,7 @@ export default function PlayerRoomPage({ params }: PageProps) {
 
   // 6. Anti-Copy Deterrence & Comprehensive Integrity Monitoring
   useEffect(() => {
-    if (gameStatus !== 'live') return
+    if (gameStatus === 'lobby' || gameStatus === 'ended' || !gameStatus) return
 
     const sendIntegrityAlert = (action: string) => {
       if (channelRef.current && playerIdRef.current) {
@@ -521,10 +521,11 @@ export default function PlayerRoomPage({ params }: PageProps) {
           })
         }
 
-        // Persist activity to session analytics in DB
+        // Persist activity to session analytics in DB (keepalive ensures delivery even on window blur / tab switch)
         fetch('/api/room/activity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
           body: JSON.stringify({
             room_code: roomCode,
             player_id: playerIdRef.current,
