@@ -44,6 +44,33 @@ export interface EmailJSResult {
 export async function sendEmailViaEmailJS(
   options: EmailJSOptions
 ): Promise<EmailJSResult> {
+  // Dynamically load fresh .env.local values if in Node.js runtime (outside test runner)
+  if (
+    !process.env.NODE_TEST_CONTEXT &&
+    (!process.env.EMAILJS_SERVICE_ID || !process.env.EMAILJS_PUBLIC_KEY)
+  ) {
+    try {
+      const fs = await import('fs')
+      const path = await import('path')
+      const envPath = path.resolve(process.cwd(), '.env.local')
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8')
+        content.split(/\r?\n/).forEach((line) => {
+          const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/)
+          if (match) {
+            const key = match[1].trim()
+            let value = (match[2] || '').replace(/\r/g, '').trim()
+            if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
+            if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1)
+            if (!process.env[key] || process.env[key] === '') {
+              process.env[key] = value.trim()
+            }
+          }
+        })
+      }
+    } catch {}
+  }
+
   const serviceId = process.env.EMAILJS_SERVICE_ID
   const templateId = process.env.EMAILJS_TEMPLATE_ID
   const publicKey = process.env.EMAILJS_PUBLIC_KEY || process.env.EMAILJS_USER_ID
@@ -73,6 +100,20 @@ export async function sendEmailViaEmailJS(
     }
   }
 
+  // Format readable scheduled time
+  let readableScheduledTime = options.scheduledAt || ''
+  if (options.scheduledAt && !isNaN(new Date(options.scheduledAt).getTime())) {
+    try {
+      readableScheduledTime = new Date(options.scheduledAt).toLocaleString('en-US', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone: options.timezone || 'UTC',
+      })
+    } catch {
+      readableScheduledTime = options.scheduledAt
+    }
+  }
+
   let allSuccess = true
   let lastError: string | undefined
 
@@ -84,11 +125,13 @@ export async function sendEmailViaEmailJS(
       subject: options.subject,
       quiz_title: options.quizTitle || 'Live Quiz',
       host_name: options.hostName || 'Huddle Host',
-      scheduled_at: options.scheduledAt || '',
+      scheduled_at: readableScheduledTime,
       timezone: options.timezone || 'UTC',
       join_url: options.joinUrl || '',
-      message: options.text || options.message || options.html || '',
+      message: options.html || options.message || options.text || '',
       html_content: options.html || '',
+      content: options.html || options.text || '',
+      message_text: options.text || options.message || '',
       ...(options.templateParams || {}),
     }
 

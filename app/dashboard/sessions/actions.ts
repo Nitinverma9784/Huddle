@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generateRoomCode } from '@/lib/room-code'
+import { revalidatePath } from 'next/cache'
 
 export async function createLiveSession(quizId: string) {
   const supabase = await createClient()
@@ -147,4 +148,29 @@ export async function getPastSessions() {
       top_scorer: top && top.score > 0 ? { name: top.display_name, score: top.score } : null,
     }
   })
+}
+
+export async function deleteScheduledSession(sessionId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error('Unauthorized')
+  }
+
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('id', sessionId)
+    .eq('host_id', user.id)
+
+  if (error) {
+    console.error('Failed to delete scheduled session:', error)
+    throw new Error('Failed to delete scheduled session: ' + error.message)
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true }
 }

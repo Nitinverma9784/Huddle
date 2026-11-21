@@ -5,8 +5,7 @@ import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
 import { generateIcsCalendar } from '@/lib/email/ics'
 import { sendEmailViaEmailJS } from '@/lib/email/emailjs'
 
-// Run on Vercel Edge Runtime for maximum performance and global low-latency execution
-export const runtime = 'edge'
+// Standard Node.js runtime for reliable environment variable access and email dispatching
 
 /**
  * POST /api/schedule
@@ -82,6 +81,8 @@ export async function POST(req: NextRequest) {
       )
     )
 
+    const emailResults: Array<{ recipient: string; success: boolean; error?: string }> = []
+
     if (uniqueEmails.length > 0) {
       const invitesData = uniqueEmails.map((email) => ({
         session_id: session.id,
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
             : btoa(unescape(encodeURIComponent(icsContent)))
 
         for (const recipient of uniqueEmails) {
-          await sendEmailViaEmailJS({
+          const emailRes = await sendEmailViaEmailJS({
             to: recipient,
             subject: `Invitation: ${quiz.title} on Huddle`,
             quizTitle: quiz.title,
@@ -137,11 +138,19 @@ export async function POST(req: NextRequest) {
               },
             ],
           })
+          emailResults.push({ recipient, ...emailRes })
+          if (!emailRes.success) {
+            console.error(`[Schedule API] EmailJS failed for ${recipient}:`, emailRes.error)
+          } else {
+            console.log(`[Schedule API] EmailJS sent successfully to ${recipient}`)
+          }
         }
       } catch (emailErr) {
-        console.warn('[Edge Schedule] EmailJS dispatch warning (non-fatal):', emailErr)
+        console.warn('[Schedule API] Email dispatch warning (non-fatal):', emailErr)
       }
     }
+
+    const emailsSentCount = emailResults.filter((r) => r.success).length
 
     return NextResponse.json({
       success: true,
@@ -149,6 +158,10 @@ export async function POST(req: NextRequest) {
       roomCode: session.room_code,
       joinUrl,
       invitedCount: uniqueEmails.length,
+      emailsSentCount,
+      emailResults,
+      scheduledAt,
+      timezone,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown Edge Scheduling Error'

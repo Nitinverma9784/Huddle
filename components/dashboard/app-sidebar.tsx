@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   Sidebar,
   SidebarContent,
@@ -22,7 +22,6 @@ import {
   Sparkles,
   Calendar,
   BarChart3,
-  PlayCircle,
 } from 'lucide-react'
 
 interface AppSidebarProps {
@@ -35,35 +34,40 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentTab = searchParams?.get('tab')
 
-  const items = [
+  interface NavItem {
+    title: string
+    url: string
+    icon: React.ComponentType<{ className?: string }>
+    active: boolean
+    disabled?: boolean
+    badge?: string
+  }
+
+  const items: NavItem[] = [
     {
       title: 'Quizzes',
       url: '/dashboard',
       icon: LayoutList,
-      active: pathname === '/dashboard' || pathname.startsWith('/dashboard/quizzes'),
+      active:
+        (pathname === '/dashboard' && (!currentTab || currentTab === 'quizzes')) ||
+        pathname.startsWith('/dashboard/quizzes'),
     },
     {
       title: 'Scheduled Sessions',
-      url: '#',
+      url: '/dashboard?tab=upcoming',
       icon: Calendar,
-      active: false,
-      disabled: true,
-      badge: 'Coming Soon',
-    },
-    {
-      title: 'Live Rooms',
-      url: '#',
-      icon: PlayCircle,
-      active: false,
-      disabled: true,
-      badge: 'Coming Soon',
+      active: pathname === '/dashboard' && currentTab === 'upcoming',
     },
     {
       title: 'Analytics & Results',
       url: '/dashboard?tab=past',
       icon: BarChart3,
-      active: pathname.startsWith('/dashboard/analytics') || pathname.includes('tab=past'),
+      active:
+        pathname.startsWith('/dashboard/analytics') ||
+        (pathname === '/dashboard' && currentTab === 'past'),
     },
   ]
 
