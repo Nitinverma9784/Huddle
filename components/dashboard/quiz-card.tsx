@@ -37,6 +37,7 @@ import {
 import { duplicateQuiz, deleteQuiz } from '@/app/dashboard/quizzes/actions'
 import { createLiveSession } from '@/app/dashboard/sessions/actions'
 import { toast } from 'sonner'
+import { format } from 'date-fns'
 import { ScheduleDialog } from './schedule-dialog'
 import { cn } from '@/lib/utils'
 
@@ -97,11 +98,9 @@ export function QuizCard({ quiz }: { quiz: QuizCardData }) {
     }
   }
 
-  const formattedDate = new Date(quiz.updated_at).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  const formattedDate = quiz.updated_at
+    ? format(new Date(quiz.updated_at), 'MMM d, yyyy')
+    : ''
 
   return (
     <>
@@ -173,7 +172,9 @@ export function QuizCard({ quiz }: { quiz: QuizCardData }) {
               <span>{quiz.default_timer_seconds}s per Q</span>
             </div>
           </div>
-          <div className="mt-2 text-xs text-muted-foreground">Edited {formattedDate}</div>
+          <div className="mt-2 text-xs text-muted-foreground" suppressHydrationWarning>
+            Edited {formattedDate}
+          </div>
         </CardContent>
 
         <CardFooter className="pt-0 flex gap-2">

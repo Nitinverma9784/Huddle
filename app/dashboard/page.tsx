@@ -113,7 +113,7 @@ export default async function DashboardPage() {
                     <CardContent className="space-y-2 text-xs text-muted-foreground pb-4">
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5" />
-                        <span>
+                        <span suppressHydrationWarning>
                           {session.scheduled_at
                             ? new Date(session.scheduled_at).toLocaleString(undefined, {
                                 dateStyle: 'medium',
@@ -189,7 +189,7 @@ export default async function DashboardPage() {
                           <Users className="h-3 w-3" /> {session.player_count} players
                         </span>
                         <span>&bull;</span>
-                        <span>
+                        <span suppressHydrationWarning>
                           {new Date(session.updated_at || session.created_at).toLocaleDateString()}
                         </span>
                       </div>

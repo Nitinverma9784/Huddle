@@ -114,7 +114,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             Session Report: {quizTitle}
           </h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" suppressHydrationWarning>
             Room Code: <span className="font-mono font-bold text-foreground">{session.room_code}</span> &bull;{' '}
             {new Date(session.updated_at || session.created_at).toLocaleDateString(undefined, {
               dateStyle: 'full',
