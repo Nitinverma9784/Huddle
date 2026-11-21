@@ -61,34 +61,61 @@ export function ScheduleDialog({
   const [completedInfo, setCompletedInfo] = useState<CompletedSessionInfo | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Helper to extract and add valid emails from any string (comma, space, newline separated)
-  const addEmails = (rawText: string): number => {
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
-    const matches = rawText.match(emailRegex) || []
-    if (matches.length === 0) return 0
-
-    const clean = matches.map((m) => m.toLowerCase().trim())
-    let addedCount = 0
-    setEmails((prev) => {
-      const existingSet = new Set(prev)
-      const next = [...prev]
-      for (const email of clean) {
-        if (!existingSet.has(email)) {
-          existingSet.add(email)
-          next.push(email)
-          addedCount++
+  // Helper to extract valid emails from any text
+  const extractEmails = (rawText: string): string[] => {
+    // Split by common delimiters: commas, semicolons, whitespace, newlines
+    const tokens = rawText.split(/[\s,;\n\r\t]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)
+    const valid: string[] = []
+    for (const token of tokens) {
+      // Strip brackets, quotes, or trailing punctuation
+      const cleaned = token.replace(/^[<"'(]+|[>"'),;]+$/g, '')
+      if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleaned)) {
+        if (!valid.includes(cleaned)) {
+          valid.push(cleaned)
         }
       }
-      return next
-    })
-    return addedCount
+    }
+    return valid
+  }
+
+  // Helper to add emails and return sync stats (added count, duplicates, invalid)
+  const addEmails = (rawText: string): { added: number; duplicates: number; invalid: boolean } => {
+    const extracted = extractEmails(rawText)
+    if (extracted.length === 0) {
+      return { added: 0, duplicates: 0, invalid: true }
+    }
+
+    const currentSet = new Set(emails)
+    const newEmails = extracted.filter((e) => !currentSet.has(e))
+    const duplicates = extracted.length - newEmails.length
+
+    if (newEmails.length > 0) {
+      setEmails((prev) => {
+        const set = new Set(prev)
+        const next = [...prev]
+        for (const email of newEmails) {
+          if (!set.has(email)) {
+            set.add(email)
+            next.push(email)
+          }
+        }
+        return next
+      })
+    }
+
+    return { added: newEmails.length, duplicates, invalid: false }
   }
 
   const handleAddEmailFromInput = () => {
-    if (!emailInput.trim()) return
-    const added = addEmails(emailInput)
-    if (added > 0) {
+    const text = emailInput.trim()
+    if (!text) return
+
+    const result = addEmails(text)
+    if (result.added > 0) {
       setEmailInput('')
+    } else if (result.duplicates > 0) {
+      setEmailInput('')
+      toast.info('Email address is already in the list')
     } else {
       toast.error('Please enter a valid email address')
     }
@@ -107,10 +134,14 @@ export function ScheduleDialog({
     const text = e.clipboardData.getData('text')
     if (text && text.includes('@')) {
       e.preventDefault()
-      const added = addEmails(text)
+      const result = addEmails(text)
       setEmailInput('')
-      if (added > 0) {
-        toast.success(`Added ${added} email address${added > 1 ? 'es' : ''}`)
+      if (result.added > 0) {
+        toast.success(`Added ${result.added} email address${result.added > 1 ? 'es' : ''}`)
+      } else if (result.duplicates > 0) {
+        toast.info('Pasted email(s) are already in the list')
+      } else {
+        toast.error('No valid email addresses found in pasted text')
       }
     }
   }
@@ -118,9 +149,9 @@ export function ScheduleDialog({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     // If user typed/pasted a string with separators (space, comma, newline) containing an email, auto-add
-    if (/[,;\s\n]/.test(val) && val.includes('@')) {
-      const added = addEmails(val)
-      if (added > 0) {
+    if (/[,;\s\n\t]/.test(val) && val.includes('@')) {
+      const result = addEmails(val)
+      if (result.added > 0 || result.duplicates > 0) {
         setEmailInput('')
         return
       }
@@ -145,8 +176,14 @@ export function ScheduleDialog({
     reader.onload = (event) => {
       const content = event.target?.result as string
       if (content) {
-        const added = addEmails(content)
-        toast.success(`Imported ${added} email(s) from CSV`)
+        const result = addEmails(content)
+        if (result.added > 0) {
+          toast.success(`Imported ${result.added} email(s) from CSV`)
+        } else if (result.duplicates > 0) {
+          toast.info('All emails from CSV are already in the list')
+        } else {
+          toast.error('No valid emails found in CSV')
+        }
       }
     }
     reader.readAsText(file)
@@ -168,10 +205,11 @@ export function ScheduleDialog({
       // Include pending text in input if valid email
       const allEmails = [...emails]
       if (emailInput.trim()) {
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-        const trimmed = emailInput.trim().toLowerCase()
-        if (emailRegex.test(trimmed) && !allEmails.includes(trimmed)) {
-          allEmails.push(trimmed)
+        const extracted = extractEmails(emailInput.trim())
+        for (const em of extracted) {
+          if (!allEmails.includes(em)) {
+            allEmails.push(em)
+          }
         }
       }
 
@@ -426,12 +464,17 @@ export function ScheduleDialog({
 
               <div className="flex gap-2">
                 <Input
-                  type="email"
+                  type="text"
                   placeholder="Type email & press Enter, or paste separated by space / comma..."
                   value={emailInput}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
+                  onBlur={() => {
+                    if (emailInput.trim()) {
+                      handleAddEmailFromInput()
+                    }
+                  }}
                   className="text-xs flex-1"
                 />
                 <Button

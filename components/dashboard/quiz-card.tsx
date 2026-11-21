@@ -186,9 +186,9 @@ export function QuizCard({ quiz }: { quiz: QuizCardData }) {
           </div>
         </CardContent>
 
-        <CardFooter className="pt-0 px-5 pb-5 flex gap-2">
+        <CardFooter className="pt-4 px-5 pb-5 flex gap-2 border-t border-border/50 bg-muted/10">
           <Button
-            className="flex-1 gap-2 rounded-xl font-bold shadow-xs py-4 text-xs"
+            className="flex-1 gap-2 rounded-xl font-bold shadow-xs h-9 text-xs cursor-pointer"
             size="sm"
             onClick={handleStartLive}
             disabled={loading}
@@ -199,7 +199,7 @@ export function QuizCard({ quiz }: { quiz: QuizCardData }) {
             variant="outline"
             size="sm"
             onClick={() => setScheduleOpen(true)}
-            className="gap-1.5 rounded-xl font-medium text-xs px-3"
+            className="gap-1.5 rounded-xl font-medium text-xs px-3 h-9 cursor-pointer"
           >
             <Calendar className="h-3.5 w-3.5" /> Schedule
           </Button>
