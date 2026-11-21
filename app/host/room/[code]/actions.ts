@@ -215,14 +215,59 @@ export async function showLeaderboardAction(sessionId: string) {
   return data
 }
 
-export async function endGameAction(sessionId: string) {
+export async function endGameAction(
+  sessionId: string,
+  latestAlerts?: Array<{
+    id: string
+    playerId: string
+    playerName: string
+    action: string
+    timestamp: string
+  }>,
+  tabSwitches?: Record<string, number>
+) {
   const admin = createAdminClient()
+
+  let updatePayload: Record<string, unknown> = {
+    status: 'ended',
+    updated_at: new Date().toISOString(),
+  }
+
+  if (latestAlerts?.length || (tabSwitches && Object.keys(tabSwitches).length > 0)) {
+    const { data: current } = await admin
+      .from('sessions')
+      .select('settings')
+      .eq('id', sessionId)
+      .single()
+
+    const currentSettings = (current?.settings as Record<string, unknown>) || {}
+    const existingAlerts = Array.isArray(currentSettings.integrity_alerts)
+      ? (currentSettings.integrity_alerts as Array<{ id: string }>)
+      : []
+
+    const mergedAlerts = [
+      ...(latestAlerts || []),
+      ...existingAlerts,
+    ].filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i).slice(0, 200)
+
+    const mergedTabSwitches = {
+      ...((currentSettings.tab_switches as Record<string, number>) || {}),
+      ...(tabSwitches || {}),
+    }
+
+    updatePayload = {
+      ...updatePayload,
+      settings: {
+        ...currentSettings,
+        integrity_alerts: mergedAlerts,
+        tab_switches: mergedTabSwitches,
+      },
+    }
+  }
+
   const { data, error } = await admin
     .from('sessions')
-    .update({
-      status: 'ended',
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', sessionId)
     .select()
     .single()

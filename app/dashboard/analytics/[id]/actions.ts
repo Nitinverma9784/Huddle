@@ -17,6 +17,7 @@ export async function getSessionAnalytics(sessionId: string) {
       id,
       room_code,
       status,
+      settings,
       created_at,
       updated_at,
       quizzes (
@@ -73,7 +74,24 @@ export async function getSessionAnalytics(sessionId: string) {
   const allAnswers = answers || []
   const allPlayers = players || []
 
-  // Enrich each player with individual correct and wrong question counts and accuracy
+  // Parse integrity alerts and tab switches from session settings
+  const sessionSettings = (session.settings as Record<string, any>) || {}
+  const integrityAlerts: Array<{
+    id: string
+    playerId: string
+    playerName: string
+    action: string
+    timestamp: string
+    timestampMs?: number
+    questionIndex?: number
+  }> = Array.isArray(sessionSettings.integrity_alerts) ? sessionSettings.integrity_alerts : []
+
+  const tabSwitchesMap: Record<string, number> =
+    typeof sessionSettings.tab_switches === 'object' && sessionSettings.tab_switches
+      ? sessionSettings.tab_switches
+      : {}
+
+  // Enrich each player with individual correct and wrong question counts, accuracy, and tab-switch/activity alerts
   const enrichedPlayers = allPlayers.map((p) => {
     const pAnswers = allAnswers.filter((a) => a.player_id === p.id)
     const pCorrect = pAnswers.filter((a) => a.is_correct).length
@@ -81,12 +99,23 @@ export async function getSessionAnalytics(sessionId: string) {
     const pTotal = pAnswers.length
     const pAccuracy = pTotal > 0 ? Math.round((pCorrect / pTotal) * 100) : 0
 
+    const pAlerts = integrityAlerts.filter((a) => a.playerId === p.id)
+    const pTabSwitches =
+      tabSwitchesMap[p.id] ??
+      pAlerts.filter((a) => {
+        const act = a.action.toLowerCase()
+        return act.includes('tab') || act.includes('window') || act.includes('blur') || act.includes('minimized')
+      }).length
+
     return {
       ...p,
       correctCount: pCorrect,
       incorrectCount: pIncorrect,
       totalAnswered: pTotal,
       accuracy: pAccuracy,
+      tabSwitches: pTabSwitches,
+      totalAlerts: pAlerts.length,
+      alertsList: pAlerts,
     }
   })
 
@@ -97,6 +126,9 @@ export async function getSessionAnalytics(sessionId: string) {
     totalResponses > 0
       ? Math.round(allAnswers.reduce((acc, a) => acc + (a.response_time_ms || 0), 0) / totalResponses)
       : 0
+
+  const totalTabSwitches = enrichedPlayers.reduce((acc, p) => acc + (p.tabSwitches || 0), 0)
+  const totalAlertsCount = integrityAlerts.length
 
   const perQuestionStats = questions.map((q) => {
     const qAnswers = allAnswers.filter((a) => a.question_id === q.id)
@@ -132,6 +164,9 @@ export async function getSessionAnalytics(sessionId: string) {
     overallAccuracy,
     avgResponseTimeSeconds: (avgResponseTimeMs / 1000).toFixed(1),
     totalPlayers: allPlayers.length,
+    totalTabSwitches,
+    totalAlertsCount,
+    integrityAlerts,
     perQuestionStats,
     mostMissed,
   }

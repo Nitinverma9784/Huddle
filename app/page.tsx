@@ -44,7 +44,14 @@ export default function HomePage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-[#fcfaff] dark:bg-[#07040d] text-foreground selection:bg-purple-500 selection:text-white relative overflow-hidden transition-colors duration-300">
+    <div
+      onContextMenu={(e) => {
+        if ((e.target as HTMLElement).tagName === 'IMG') {
+          e.preventDefault()
+        }
+      }}
+      className="min-h-screen bg-[#fcfaff] dark:bg-[#07040d] text-foreground selection:bg-purple-500 selection:text-white relative overflow-hidden transition-colors duration-300"
+    >
       {/* Background Radial Glow Effects */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         {/* Hero Top-Right Glow */}
@@ -111,7 +118,9 @@ export default function HomePage() {
                   <img
                     src="/hero-quiz-img.png"
                     alt="Huddle Live Quiz and Trophy"
-                    className="w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-auto object-contain object-right hover:scale-[1.01] transition-transform duration-500 select-none"
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className="w-full max-w-lg sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl h-auto object-contain object-right hover:scale-[1.01] transition-transform duration-500 select-none pointer-events-none"
                   />
                 </div>
               </div>
@@ -130,7 +139,9 @@ export default function HomePage() {
                 <img
                   src="/robot-mascot-img.png"
                   alt="Huddle AI Robot Mascot"
-                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(168,85,247,0.35)] animate-float select-none will-change-transform hover:scale-[1.02] transition-transform duration-300"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(168,85,247,0.35)] animate-float select-none will-change-transform hover:scale-[1.02] transition-transform duration-300 pointer-events-none"
                 />
               </div>
             </div>
@@ -279,7 +290,9 @@ export default function HomePage() {
                 <img
                   src="/dashboard-preview-img.png"
                   alt="Huddle Dashboard Preview"
-                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(139,92,246,0.3)] hover:scale-[1.02] transition-transform duration-500 select-none"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(139,92,246,0.3)] hover:scale-[1.02] transition-transform duration-500 select-none pointer-events-none"
                 />
               </div>
             </div>
@@ -306,7 +319,9 @@ export default function HomePage() {
                   key={idx}
                   src={src}
                   alt="Active Student Player"
-                  className="h-10 w-10 sm:h-11 sm:w-11 rounded-full object-cover ring-2 ring-purple-300 dark:ring-purple-500/30 shrink-0"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="h-10 w-10 sm:h-11 sm:w-11 rounded-full object-cover ring-2 ring-purple-300 dark:ring-purple-500/30 shrink-0 select-none pointer-events-none"
                 />
               ))}
             </div>
@@ -316,7 +331,9 @@ export default function HomePage() {
               <img
                 src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"
                 alt="Aryan Mehta"
-                className="h-10 w-10 rounded-full object-cover ring-2 ring-purple-500 shrink-0"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
+                className="h-10 w-10 rounded-full object-cover ring-2 ring-purple-500 shrink-0 select-none pointer-events-none"
               />
               <div className="space-y-0.5">
                 <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-medium italic leading-snug">
@@ -341,7 +358,9 @@ export default function HomePage() {
                 <img
                   src="/rocket-clouds-img.png"
                   alt="Huddle Rocket Launch"
-                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(168,85,247,0.35)] hover:scale-[1.03] transition-transform duration-500 select-none"
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(168,85,247,0.35)] hover:scale-[1.03] transition-transform duration-500 select-none pointer-events-none"
                 />
               </div>
             </div>
@@ -385,7 +404,9 @@ export default function HomePage() {
               <img
                 src="/huddle-logo.png"
                 alt="Huddle"
-                className="h-8 w-auto object-contain select-none"
+                draggable={false}
+                onContextMenu={(e) => e.preventDefault()}
+                className="h-8 w-auto object-contain select-none pointer-events-none"
               />
               <div className="text-[11px] text-slate-500">Play. Learn. Grow.</div>
             </div>

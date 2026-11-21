@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -23,9 +25,17 @@ import {
   Medal,
   Check,
   X,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Eye,
+  Search,
+  Activity,
+  Laptop,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { getAvatarUrl } from '@/lib/avatar'
 
 export interface QuestionStat {
   id: string
@@ -37,6 +47,16 @@ export interface QuestionStat {
   avgTimeSeconds: string
 }
 
+export interface IntegrityAlertRecord {
+  id: string
+  playerId: string
+  playerName: string
+  action: string
+  timestamp: string
+  timestampMs?: number
+  questionIndex?: number
+}
+
 export interface PlayerRecord {
   id: string
   display_name: string
@@ -46,6 +66,9 @@ export interface PlayerRecord {
   incorrectCount?: number
   totalAnswered?: number
   accuracy?: number
+  tabSwitches?: number
+  totalAlerts?: number
+  alertsList?: IntegrityAlertRecord[]
 }
 
 export interface AnalyticsData {
@@ -59,6 +82,9 @@ export interface AnalyticsData {
   overallAccuracy: number
   avgResponseTimeSeconds: string
   totalPlayers: number
+  totalTabSwitches?: number
+  totalAlertsCount?: number
+  integrityAlerts?: IntegrityAlertRecord[]
   perQuestionStats: QuestionStat[]
   mostMissed: QuestionStat[]
 }
@@ -71,9 +97,15 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
     overallAccuracy,
     avgResponseTimeSeconds,
     totalPlayers,
+    totalTabSwitches = 0,
+    totalAlertsCount = 0,
+    integrityAlerts = [],
     perQuestionStats,
     mostMissed,
   } = data
+
+  const [activeActivityTab, setActiveActivityTab] = useState<'all' | 'tab' | 'screenshot' | 'devtools'>('all')
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('')
 
   const handleExportCsv = () => {
     try {
@@ -84,6 +116,8 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         'Correct Questions',
         'Wrong Questions',
         'Accuracy %',
+        'Tab Switches',
+        'Total Suspicious Flags',
         'Avatar ID',
       ]
       const rows = players.map((p, idx) => [
@@ -93,6 +127,8 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         p.correctCount ?? 0,
         p.incorrectCount ?? 0,
         `${p.accuracy ?? 0}%`,
+        p.tabSwitches ?? 0,
+        p.totalAlerts ?? 0,
         p.avatar,
       ])
 
@@ -112,6 +148,34 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
       toast.error('Failed to export CSV')
     }
   }
+
+  // Filtered integrity alerts for the interactive audit log
+  const filteredAlerts = integrityAlerts.filter((alert) => {
+    // Filter by type
+    const actionLower = alert.action.toLowerCase()
+    if (activeActivityTab === 'tab') {
+      if (!actionLower.includes('tab') && !actionLower.includes('blur') && !actionLower.includes('window') && !actionLower.includes('minimized')) {
+        return false
+      }
+    } else if (activeActivityTab === 'screenshot') {
+      if (!actionLower.includes('screenshot') && !actionLower.includes('copy') && !actionLower.includes('print')) {
+        return false
+      }
+    } else if (activeActivityTab === 'devtools') {
+      if (!actionLower.includes('devtools') && !actionLower.includes('inspect') && !actionLower.includes('context menu') && !actionLower.includes('right click')) {
+        return false
+      }
+    }
+
+    // Filter by player search query
+    if (playerSearchQuery.trim()) {
+      return alert.playerName.toLowerCase().includes(playerSearchQuery.toLowerCase().trim())
+    }
+
+    return true
+  })
+
+  const cleanPlayerCount = players.filter((p) => (p.tabSwitches ?? 0) === 0 && (p.totalAlerts ?? 0) === 0).length
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-16">
@@ -144,8 +208,8 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         </Button>
       </div>
 
-      {/* KPI Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* KPI Metric Cards (4-grid including Integrity & Focus Audit) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground">
@@ -182,6 +246,24 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
           <CardContent>
             <div className="text-2xl font-black">{avgResponseTimeSeconds}s</div>
             <p className="text-[11px] text-muted-foreground">Per answered question</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground">
+              Focus &amp; Integrity
+            </CardTitle>
+            <Eye className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-black flex items-center gap-2">
+              <span>{totalTabSwitches}</span>
+              <span className="text-xs font-medium text-muted-foreground">switches</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {cleanPlayerCount} of {players.length} players stayed 100% focused
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -271,7 +353,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
             <div>
               <CardTitle className="text-lg font-bold">Participant Performance</CardTitle>
               <CardDescription className="text-xs">
-                Scores, correct &amp; wrong answers, and individual accuracy for each player.
+                Scores, correct &amp; wrong answers, and individual tab switch flags for each player.
               </CardDescription>
             </div>
             <Badge variant="outline" className="font-mono text-xs">
@@ -288,6 +370,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                 <TableHead className="text-center">Correct</TableHead>
                 <TableHead className="text-center">Wrong</TableHead>
                 <TableHead className="text-center">Accuracy</TableHead>
+                <TableHead className="text-center">Focus / Activity</TableHead>
                 <TableHead className="text-right pr-4">Total Score</TableHead>
               </TableRow>
             </TableHeader>
@@ -305,7 +388,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Avatar className="h-7 w-7 border">
-                        <AvatarImage src={`https://api.dicebear.com/7.x/bottts/svg?seed=${p.avatar}`} />
+                        <AvatarImage src={getAvatarUrl(p.avatar)} />
                         <AvatarFallback>{p.display_name[0]}</AvatarFallback>
                       </Avatar>
                       <span className="font-semibold text-xs">{p.display_name}</span>
@@ -335,6 +418,32 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                       {p.accuracy ?? 0}%
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-center">
+                    {(p.tabSwitches ?? 0) > 0 ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                        title={`${p.tabSwitches} tab switch / window blur event(s) recorded`}
+                      >
+                        <AlertTriangle className="h-3 w-3" /> {p.tabSwitches} {p.tabSwitches === 1 ? 'switch' : 'switches'}
+                      </Badge>
+                    ) : (p.totalAlerts ?? 0) > 0 ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                        title={`${p.totalAlerts} suspicious activity flag(s)`}
+                      >
+                        <ShieldAlert className="h-3 w-3" /> {p.totalAlerts} flagged
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                      >
+                        <ShieldCheck className="h-3 w-3" /> Clean
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right font-mono font-bold text-sm text-primary pr-4">
                     {p.score.toLocaleString()} pts
                   </TableCell>
@@ -342,6 +451,147 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
               ))}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Interactive Player Activity & Integrity Audit Feed */}
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 bg-muted/20 border-b">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <CardTitle className="text-lg font-bold">Interactive Activity &amp; Tab-Switch Audit</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Real-time tab switching, app unfocusing, and activity logs captured during live gameplay.
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs">
+              {integrityAlerts.length} total events
+            </Badge>
+          </div>
+
+          {/* Interactive Filters */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3">
+            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+              <Button
+                variant={activeActivityTab === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveActivityTab('all')}
+                className="text-xs h-7 px-3 rounded-full"
+              >
+                All Activity ({integrityAlerts.length})
+              </Button>
+              <Button
+                variant={activeActivityTab === 'tab' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveActivityTab('tab')}
+                className="text-xs h-7 px-3 rounded-full gap-1"
+              >
+                <Laptop className="h-3 w-3" /> Tab Switches ({totalTabSwitches})
+              </Button>
+              <Button
+                variant={activeActivityTab === 'screenshot' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveActivityTab('screenshot')}
+                className="text-xs h-7 px-3 rounded-full gap-1"
+              >
+                <AlertCircle className="h-3 w-3" /> Screenshots / Copy
+              </Button>
+              <Button
+                variant={activeActivityTab === 'devtools' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveActivityTab('devtools')}
+                className="text-xs h-7 px-3 rounded-full gap-1"
+              >
+                <ShieldAlert className="h-3 w-3" /> Inspect / DevTools
+              </Button>
+            </div>
+
+            {/* Search Filter */}
+            <div className="relative w-full sm:w-48">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Filter by player..."
+                value={playerSearchQuery}
+                onChange={(e) => setPlayerSearchQuery(e.target.value)}
+                className="h-8 pl-8 text-xs rounded-lg"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4">
+          {filteredAlerts.length === 0 ? (
+            <div className="text-center py-10 space-y-2">
+              <ShieldCheck className="h-10 w-10 text-emerald-500 mx-auto" />
+              <div className="font-bold text-sm">No suspicious activity detected</div>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                {integrityAlerts.length === 0
+                  ? 'All participants stayed focused on the quiz without leaving their browser tab!'
+                  : 'No activities match the current filter criteria.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+              {filteredAlerts.map((alert) => {
+                const isTabSwitch =
+                  alert.action.toLowerCase().includes('tab') ||
+                  alert.action.toLowerCase().includes('window') ||
+                  alert.action.toLowerCase().includes('blur') ||
+                  alert.action.toLowerCase().includes('minimized')
+
+                const isDevTools =
+                  alert.action.toLowerCase().includes('devtools') ||
+                  alert.action.toLowerCase().includes('inspect')
+
+                return (
+                  <div
+                    key={alert.id}
+                    className="flex items-center justify-between p-3 rounded-xl border bg-card hover:bg-muted/30 transition-colors text-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground font-bold">
+                        {isTabSwitch ? (
+                          <Laptop className="h-3.5 w-3.5 text-amber-500" />
+                        ) : isDevTools ? (
+                          <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+                        ) : (
+                          <AlertTriangle className="h-3.5 w-3.5 text-purple-500" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold flex items-center gap-2">
+                          <span>{alert.playerName}</span>
+                          {alert.questionIndex !== undefined && (
+                            <Badge variant="secondary" className="text-[10px] py-0 px-1 font-mono">
+                              Question {alert.questionIndex + 1}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className={
+                              isTabSwitch
+                                ? 'text-amber-600 dark:text-amber-400 font-medium'
+                                : isDevTools
+                                ? 'text-rose-600 dark:text-rose-400 font-medium'
+                                : 'text-purple-600 dark:text-purple-400 font-medium'
+                            }
+                          >
+                            {alert.action}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {alert.timestamp}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

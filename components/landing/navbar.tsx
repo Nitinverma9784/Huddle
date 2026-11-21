@@ -58,7 +58,9 @@ export function Navbar({ onOpenJoin }: { onOpenJoin?: () => void }) {
             <img
               src="/huddle-logo.png"
               alt="Huddle"
-              className="h-9 w-auto object-contain group-hover:scale-105 transition-transform select-none"
+              draggable={false}
+              onContextMenu={(e) => e.preventDefault()}
+              className="h-9 w-auto object-contain group-hover:scale-105 transition-transform select-none pointer-events-none"
             />
           </Link>
 

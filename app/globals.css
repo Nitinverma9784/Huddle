@@ -4,6 +4,16 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Prevent image downloading, dragging, or touch-holding across landing pages */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;

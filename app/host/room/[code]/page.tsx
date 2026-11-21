@@ -402,7 +402,7 @@ export default function HostRoomPage({ params }: PageProps) {
   const handleEndGame = useCallback(async () => {
     if (!session?.id) return
     try {
-      const updated = await endGameAction(session.id)
+      const updated = await endGameAction(session.id, integrityAlerts, tabSwitchAlerts)
       setSession(updated)
 
       const freshData = await getHostRoomData(roomCode)

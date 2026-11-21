@@ -520,6 +520,18 @@ export default function PlayerRoomPage({ params }: PageProps) {
             },
           })
         }
+
+        // Persist activity to session analytics in DB
+        fetch('/api/room/activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room_code: roomCode,
+            player_id: playerIdRef.current,
+            player_name: displayName.trim() || 'Player',
+            action,
+          }),
+        }).catch(() => {})
       }
     }
 
