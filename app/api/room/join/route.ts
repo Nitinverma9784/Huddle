@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch Session
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
-      .select('id, status, current_question_index, question_started_at, scheduled_at, settings, quiz_id')
+      .select('id, status, current_question_index, question_started_at, scheduled_at, settings, quiz_id, quizzes(default_timer_seconds)')
       .eq('room_code', room_code.toUpperCase().trim())
       .single()
 
@@ -48,7 +48,10 @@ export async function POST(req: NextRequest) {
               : typeof q.options === 'string'
               ? JSON.parse(q.options)
               : [],
-            timer_seconds: q.timer_seconds,
+            timer_seconds:
+              q.timer_seconds ||
+              (session.quizzes as { default_timer_seconds?: number } | null)?.default_timer_seconds ||
+              20,
           }
         }
       }

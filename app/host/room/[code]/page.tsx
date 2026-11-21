@@ -19,6 +19,7 @@ import { PresenterView } from '@/components/live-room/presenter-view'
 import { ControlView, IntegrityAlert } from '@/components/live-room/control-view'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,8 @@ interface HostQuiz {
   id: string
   title: string
   theme: string
+  default_timer_seconds?: number
+  default_points?: number
 }
 
 export default function HostRoomPage({ params }: PageProps) {
@@ -91,22 +94,26 @@ export default function HostRoomPage({ params }: PageProps) {
         if (isMounted) {
           setSession(data.session)
           setQuiz(data.quiz)
-          setQuestions(
-            (data.questions || []).map((q: {
-              id: string
-              text: string
-              options: string | string[]
-              correct_index: number
-              timer_seconds?: number
-            }) => ({
-              ...q,
-              options: Array.isArray(q.options)
-                ? q.options
-                : typeof q.options === 'string'
-                ? JSON.parse(q.options)
-                : [],
-            }))
-          )
+          const mappedQuestions = (data.questions || []).map((q: {
+            id: string
+            text: string
+            options: string | string[]
+            correct_index: number
+            timer_seconds?: number
+            points?: number
+          }) => ({
+            ...q,
+            timer_seconds: q.timer_seconds || data.quiz?.default_timer_seconds || 20,
+            options: Array.isArray(q.options)
+              ? q.options
+              : typeof q.options === 'string'
+              ? JSON.parse(q.options)
+              : [],
+          }))
+          setQuestions(mappedQuestions)
+          if (mappedQuestions[0]?.timer_seconds) {
+            setRemainingSeconds(mappedQuestions[0].timer_seconds)
+          }
           setPlayers(data.players)
           setLoading(false)
         }
@@ -137,6 +144,37 @@ export default function HostRoomPage({ params }: PageProps) {
           if (prev.some((p) => p.id === payload.player.id)) return prev
           return [...prev, payload.player]
         })
+      })
+      .on('broadcast', { event: 'question_started' }, ({ payload }) => {
+        if (payload?.questionIndex !== undefined) {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: 'live',
+                  current_question_index: payload.questionIndex,
+                  question_started_at: payload.startedAt,
+                }
+              : prev
+          )
+          setAnswersCount(0)
+          setAnswerDistribution({})
+          setRemainingSeconds(payload.timerSeconds || currentQuestion?.timer_seconds || quiz?.default_timer_seconds || 20)
+        }
+      })
+      .on('broadcast', { event: 'game_ended' }, ({ payload }) => {
+        setSession((prev) => (prev ? { ...prev, status: 'ended' } : prev))
+        if (payload?.fullLeaderboard) setPlayers(payload.fullLeaderboard)
+      })
+      .on('broadcast', { event: 'score_updated' }, ({ payload }) => {
+        if (payload?.playerId && payload?.newScore !== undefined) {
+          setPlayers((prev) => {
+            const updated = prev.map((p) =>
+              p.id === payload.playerId ? { ...p, score: payload.newScore } : p
+            )
+            return [...updated].sort((a, b) => b.score - a.score)
+          })
+        }
       })
       .on('broadcast', { event: 'player_answered' }, async ({ payload }) => {
         setAnswersCount((prev) => prev + 1)
@@ -269,12 +307,13 @@ export default function HostRoomPage({ params }: PageProps) {
             setAnswerDistribution({})
 
             const q = questions[0]
+            const qTimer = q?.timer_seconds || quiz?.default_timer_seconds || 20
             broadcastEvent('question_started', {
               questionId: q?.id,
               questionIndex: 0,
               questionText: q?.text,
               options: q?.options,
-              timerSeconds: q?.timer_seconds || 20,
+              timerSeconds: qTimer,
               startedAt: updated.question_started_at,
             })
             toast.success('Quiz started!')
@@ -335,12 +374,13 @@ export default function HostRoomPage({ params }: PageProps) {
       setAnswerDistribution({})
 
       const nextQ = questions[nextIdx]
+      const nextTimer = nextQ?.timer_seconds || quiz?.default_timer_seconds || 20
       broadcastEvent('question_started', {
         questionId: nextQ?.id,
         questionIndex: nextIdx,
         questionText: nextQ?.text,
         options: nextQ?.options,
-        timerSeconds: nextQ?.timer_seconds || 20,
+        timerSeconds: nextTimer,
         startedAt: updated.question_started_at,
       })
     } catch {
@@ -397,7 +437,7 @@ export default function HostRoomPage({ params }: PageProps) {
       return
     }
 
-    const timerSec = currentQuestion.timer_seconds || 20
+    const timerSec = currentQuestion.timer_seconds || quiz?.default_timer_seconds || 20
     const startedAt = new Date(session.question_started_at).getTime()
 
     const updateTimer = () => {
@@ -419,30 +459,18 @@ export default function HostRoomPage({ params }: PageProps) {
     }
   }, [session?.status, session?.question_started_at, currentQuestion, handleEndQuestion])
 
-  // 6. Complete Autonomy: Early End Question when all joined players have answered
-  useEffect(() => {
-    if (
-      session?.status === 'live' &&
-      autoAdvance &&
-      players.length > 0 &&
-      answersCount >= players.length
-    ) {
-      const earlyEndTimeout = setTimeout(() => {
-        handleEndQuestion()
-      }, 1500)
-      return () => clearTimeout(earlyEndTimeout)
-    }
-  }, [session?.status, autoAdvance, players.length, answersCount, handleEndQuestion])
+  // 6. Uniform Question Timing: Every question runs for its full timer duration.
+  // We do not terminate early when all players answer, ensuring fair and uniform question timing.
 
-  // 7. Complete Autonomy: Auto-Advance from question_ended to leaderboard (4s)
+  // 7. Complete Autonomy: Auto-Advance smoothly to next question (3.5s review)
   useEffect(() => {
     if (session?.status !== 'question_ended' || !autoAdvance) {
       if (session?.status !== 'leaderboard') setAutoAdvanceSeconds(null)
       return
     }
 
-    setAutoAdvanceSeconds(4)
-    let left = 4
+    setAutoAdvanceSeconds(3)
+    let left = 3
     const interval = setInterval(() => {
       left -= 1
       if (left > 0) {
@@ -450,21 +478,32 @@ export default function HostRoomPage({ params }: PageProps) {
       } else {
         clearInterval(interval)
         setAutoAdvanceSeconds(null)
-        handleShowLeaderboard()
+        if (currentQIndex < questions.length - 1) {
+          handleNextQuestion()
+        } else {
+          handleEndGame()
+        }
       }
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [session?.status, autoAdvance, handleShowLeaderboard])
+  }, [
+    session?.status,
+    autoAdvance,
+    currentQIndex,
+    questions.length,
+    handleNextQuestion,
+    handleEndGame,
+  ])
 
-  // 8. Complete Autonomy: Auto-Advance from leaderboard to next question or podium (5s)
+  // 8. Auto-Advance from leaderboard (if triggered manually by host)
   useEffect(() => {
     if (session?.status !== 'leaderboard' || !autoAdvance) {
       return
     }
 
-    setAutoAdvanceSeconds(5)
-    let left = 5
+    setAutoAdvanceSeconds(3)
+    let left = 3
     const interval = setInterval(() => {
       left -= 1
       if (left > 0) {
@@ -630,44 +669,68 @@ export default function HostRoomPage({ params }: PageProps) {
                 No players joined yet.
               </div>
             ) : (
-              [...players]
-                .sort((a, b) => b.score - a.score)
-                .map((p, idx) => {
-                  const rank = idx + 1
-                  return (
-                    <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {rank === 1 ? (
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-xs shadow-xs">
-                            1
+              (() => {
+                const maxScore = Math.max(...players.map((p) => p.score), 100)
+                return [...players]
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, idx) => {
+                    const rank = idx + 1
+                    const scorePercent =
+                      maxScore > 0
+                        ? Math.min(100, Math.max(p.score > 0 ? 5 : 0, Math.round((p.score / maxScore) * 100)))
+                        : 0
+                    const barColor =
+                      rank === 1
+                        ? 'bg-amber-500'
+                        : rank === 2
+                        ? 'bg-slate-400'
+                        : rank === 3
+                        ? 'bg-amber-700'
+                        : 'bg-primary'
+
+                    return (
+                      <div key={p.id} className="py-2.5 px-1 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {rank === 1 ? (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-xs shadow-xs">
+                                1
+                              </span>
+                            ) : rank === 2 ? (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-xs shadow-xs">
+                                2
+                              </span>
+                            ) : rank === 3 ? (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-xs shadow-xs">
+                                3
+                              </span>
+                            ) : (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-xs font-semibold">
+                                {rank}
+                              </span>
+                            )}
+                            <Avatar className="h-8 w-8 border shrink-0">
+                              <AvatarImage src={getAvatarUrl(p.avatar)} />
+                              <AvatarFallback>{p.display_name[0]}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-sm truncate max-w-[160px]">
+                              {p.display_name}
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-sm text-primary">
+                            {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
                           </span>
-                        ) : rank === 2 ? (
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-xs shadow-xs">
-                            2
-                          </span>
-                        ) : rank === 3 ? (
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-xs shadow-xs">
-                            3
-                          </span>
-                        ) : (
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-xs font-semibold">
-                            {rank}
-                          </span>
-                        )}
-                        <Avatar className="h-8 w-8 border shrink-0">
-                          <AvatarImage src={getAvatarUrl(p.avatar)} />
-                          <AvatarFallback>{p.display_name[0]}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-semibold text-sm truncate max-w-[160px]">
-                          {p.display_name}
-                        </span>
+                        </div>
+                        {/* Dynamic Leaderboard Progress Bar */}
+                        <Progress
+                          value={scorePercent}
+                          indicatorClassName={barColor}
+                          trackClassName="h-1 bg-muted/60"
+                        />
                       </div>
-                      <span className="font-mono font-bold text-sm text-primary">
-                        {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
-                      </span>
-                    </div>
-                  )
-                })
+                    )
+                  })
+              })()
             )}
           </div>
         </DialogContent>

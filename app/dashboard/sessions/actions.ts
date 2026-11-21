@@ -114,27 +114,37 @@ export async function getPastSessions() {
       status,
       created_at,
       updated_at,
+      quiz_id,
       quizzes (
         id,
         title
       ),
       players (
         id,
+        display_name,
         score
       )
     `)
     .eq('host_id', user.id)
-    .eq('status', 'ended')
+    .neq('status', 'scheduled')
+    .neq('status', 'lobby')
     .order('updated_at', { ascending: false })
-    .limit(20)
+    .limit(50)
 
   if (error) {
     console.error('Error fetching past sessions:', error)
     return []
   }
 
-  return (data || []).map((s) => ({
-    ...s,
-    player_count: Array.isArray(s.players) ? s.players.length : 0,
-  }))
+  return (data || []).map((s) => {
+    const playersList = Array.isArray(s.players) ? s.players : []
+    const sortedPlayers = [...playersList].sort((a, b) => (b.score || 0) - (a.score || 0))
+    const top = sortedPlayers[0]
+
+    return {
+      ...s,
+      player_count: playersList.length,
+      top_scorer: top && top.score > 0 ? { name: top.display_name, score: top.score } : null,
+    }
+  })
 }

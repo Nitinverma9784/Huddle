@@ -2,7 +2,87 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@keyframes float-bot {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-18px) rotate(1deg);
+  }
+}
+
+.animate-float {
+  animation: float-bot 4.5s ease-in-out infinite;
+}
+
+@keyframes rise-up {
+  0% {
+    opacity: 0;
+    transform: translateY(35px) scale(0.96);
+  }
+  65% {
+    opacity: 0.95;
+    transform: translateY(-3px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pedestal-grow {
+  0% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  75% {
+    transform: scaleY(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes result-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+  }
+  60% {
+    transform: translateY(-2px) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-rise-up {
+  animation: rise-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-pedestal {
+  transform-origin: bottom;
+  animation: pedestal-grow 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-result-reveal {
+  animation: result-reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 
 @theme inline {
     --font-heading: var(--font-sans);

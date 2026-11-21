@@ -4,6 +4,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/avatar'
 import {
@@ -21,7 +22,7 @@ import {
   MousePointer,
   Terminal,
   Minimize2,
-  Sparkles,
+  Zap,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
@@ -109,7 +110,7 @@ export function ControlView({
                     htmlFor="auto-advance"
                     className="text-xs font-semibold cursor-pointer flex items-center gap-1"
                   >
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                    <Zap className="h-3.5 w-3.5 text-primary" />
                     Auto-Pilot
                   </Label>
                 </div>
@@ -370,57 +371,81 @@ export function ControlView({
             </div>
           ) : (
             <div className="divide-y text-xs">
-              {[...players]
-                .sort((a, b) => b.score - a.score)
-                .map((p, idx) => {
-                  const rank = idx + 1
-                  const rankBadge =
-                    rank === 1 ? (
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-[10px] shadow-xs">
-                        1
-                      </span>
-                    ) : rank === 2 ? (
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-[10px] shadow-xs">
-                        2
-                      </span>
-                    ) : rank === 3 ? (
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-[10px] shadow-xs">
-                        3
-                      </span>
-                    ) : (
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-[10px]">
-                        {rank}
-                      </span>
-                    )
+              {(() => {
+                const maxScore = Math.max(...players.map((p) => p.score), 100)
+                return [...players]
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, idx) => {
+                    const rank = idx + 1
+                    const scorePercent =
+                      maxScore > 0
+                        ? Math.min(100, Math.max(p.score > 0 ? 5 : 0, Math.round((p.score / maxScore) * 100)))
+                        : 0
+                    const barColor =
+                      rank === 1
+                        ? 'bg-amber-500'
+                        : rank === 2
+                        ? 'bg-slate-400'
+                        : rank === 3
+                        ? 'bg-amber-700'
+                        : 'bg-primary'
 
-                  return (
-                    <div key={p.id} className="flex items-center justify-between py-2.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {rankBadge}
-                        <Avatar className="h-7 w-7 border shrink-0">
-                          <AvatarImage src={getAvatarUrl(p.avatar)} />
-                          <AvatarFallback>{p.display_name[0]}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-semibold text-sm truncate max-w-[140px]">
-                          {p.display_name}
+                    const rankBadge =
+                      rank === 1 ? (
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-[10px] shadow-xs">
+                          1
                         </span>
-                      </div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-bold text-sm text-primary">
-                          {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
+                      ) : rank === 2 ? (
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-[10px] shadow-xs">
+                          2
                         </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => onKickPlayer(p.id)}
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive gap-1"
-                        >
-                          <UserX className="h-3 w-3" />
-                        </Button>
+                      ) : rank === 3 ? (
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-[10px] shadow-xs">
+                          3
+                        </span>
+                      ) : (
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-[10px]">
+                          {rank}
+                        </span>
+                      )
+
+                    return (
+                      <div key={p.id} className="py-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {rankBadge}
+                            <Avatar className="h-7 w-7 border shrink-0">
+                              <AvatarImage src={getAvatarUrl(p.avatar)} />
+                              <AvatarFallback>{p.display_name[0]}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-sm truncate max-w-[140px]">
+                              {p.display_name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-mono font-bold text-sm text-primary">
+                              {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => onKickPlayer(p.id)}
+                              className="h-7 px-2 text-xs text-destructive hover:text-destructive gap-1"
+                            >
+                              <UserX className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        {/* Dynamic Leaderboard Progress Bar */}
+                        <Progress
+                          value={scorePercent}
+                          indicatorClassName={barColor}
+                          trackClassName="h-1 bg-muted/60"
+                        />
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+              })()}
             </div>
           )}
         </CardContent>

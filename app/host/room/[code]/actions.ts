@@ -73,9 +73,13 @@ export async function getHostRoomData(roomCode: string) {
     questions?: HostQuestionItem[]
   } | null
 
-  const questions = (quiz?.questions || []).sort(
-    (a, b) => a.order_index - b.order_index
-  )
+  const questions = (quiz?.questions || [])
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((q) => ({
+      ...q,
+      timer_seconds: q.timer_seconds || quiz?.default_timer_seconds || 20,
+      points: q.points || quiz?.default_points || 1000,
+    }))
 
   return {
     session,
@@ -169,6 +173,7 @@ export async function endQuestionAction(sessionId: string) {
       .update({
         status: 'live',
         question_started_at: null,
+        settings: { stage: 'question_ended' },
         updated_at: new Date().toISOString(),
       })
       .eq('id', sessionId)
@@ -176,7 +181,7 @@ export async function endQuestionAction(sessionId: string) {
       .single()
 
     if (fallback.error) throw new Error(fallback.error.message)
-    return fallback.data
+    return { ...fallback.data, status: 'question_ended' }
   }
   return data
 }

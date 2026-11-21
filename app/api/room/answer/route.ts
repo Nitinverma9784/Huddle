@@ -117,12 +117,29 @@ export async function POST(req: NextRequest) {
     const newScore = player.score + scoreResult.pointsAwarded
     await supabase.from('players').update({ score: newScore }).eq('id', player_id)
 
+    // 7. Check if all active players have answered this question
+    const { count: totalPlayers } = await supabase
+      .from('players')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', session_id)
+      .eq('kicked', false)
+
+    const { count: totalAnswers } = await supabase
+      .from('answers')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', session_id)
+      .eq('question_id', question_id)
+
+    const allAnswered = (totalAnswers || 0) >= (totalPlayers || 1)
+
     return NextResponse.json({
       success: true,
       is_correct: isCorrect,
       points_awarded: scoreResult.pointsAwarded,
       speed_bonus: scoreResult.speedBonus,
       new_score: newScore,
+      all_answered: allAnswered,
+      correct_index: question.correct_index,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Invalid answer submission'

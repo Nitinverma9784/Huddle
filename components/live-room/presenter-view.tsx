@@ -4,12 +4,13 @@ import { useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import confetti from 'canvas-confetti'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/avatar'
 import {
   Users,
   Trophy,
-  Sparkles,
+  Clock,
   CheckCircle2,
   Crown,
   Medal,
@@ -243,8 +244,8 @@ export function PresenterView({
               Time&apos;s Up! Question {questionIndex + 1} Review
             </Badge>
             {autoAdvanceSeconds !== null && (
-              <Badge className="text-xs px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white gap-1 animate-pulse">
-                <Sparkles className="h-3 w-3" /> Auto-advancing in {autoAdvanceSeconds}s
+              <Badge className="text-xs px-3 py-1 bg-primary text-primary-foreground gap-1">
+                <Clock className="h-3 w-3" /> Auto-advancing in {autoAdvanceSeconds}s
               </Badge>
             )}
           </div>
@@ -294,8 +295,8 @@ export function PresenterView({
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <h2 className="text-3xl font-black tracking-tight">Leaderboard</h2>
               {autoAdvanceSeconds !== null && (
-                <Badge className="text-xs px-3 py-1 bg-primary text-primary-foreground gap-1 animate-pulse">
-                  <Sparkles className="h-3 w-3" />
+                <Badge className="text-xs px-3 py-1 bg-primary text-primary-foreground gap-1">
+                  <Clock className="h-3 w-3" />
                   {questionIndex + 1 < totalQuestions
                     ? `Next Question in ${autoAdvanceSeconds}s`
                     : `Podium in ${autoAdvanceSeconds}s`}
@@ -306,29 +307,62 @@ export function PresenterView({
           </div>
 
           <div className="space-y-3 pt-2">
-            {topPlayers.slice(0, 5).map((player, idx) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between p-4 rounded-2xl border bg-card shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl font-mono font-bold text-base bg-muted">
-                    {idx === 0 && <Crown className="h-5 w-5 text-amber-500" />}
-                    {idx === 1 && <Medal className="h-5 w-5 text-slate-400" />}
-                    {idx === 2 && <Medal className="h-5 w-5 text-amber-700" />}
-                    {idx > 2 && idx + 1}
+            {(() => {
+              const maxScore = Math.max(...topPlayers.map((p) => p.score), 100)
+
+              return topPlayers.slice(0, 5).map((player, idx) => {
+                const scorePercent =
+                  maxScore > 0
+                    ? Math.min(100, Math.max(player.score > 0 ? 5 : 0, Math.round((player.score / maxScore) * 100)))
+                    : 0
+                const barColor =
+                  idx === 0
+                    ? 'bg-amber-500'
+                    : idx === 1
+                    ? 'bg-slate-400'
+                    : idx === 2
+                    ? 'bg-amber-700'
+                    : 'bg-primary'
+
+                return (
+                  <div
+                    key={player.id}
+                    className="animate-rise-up flex flex-col p-4 rounded-2xl border bg-card shadow-sm hover:shadow-md transition-all space-y-2.5"
+                    style={{
+                      animationDelay: `${(topPlayers.slice(0, 5).length - 1 - idx) * 160 + 100}ms`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl font-mono font-bold text-base bg-muted">
+                          {idx === 0 && <Crown className="h-5 w-5 text-amber-500 animate-bounce" />}
+                          {idx === 1 && <Medal className="h-5 w-5 text-slate-400" />}
+                          {idx === 2 && <Medal className="h-5 w-5 text-amber-700" />}
+                          {idx > 2 && idx + 1}
+                        </div>
+                        <Avatar className="h-10 w-10 border shadow-xs">
+                          <AvatarImage src={getAvatarUrl(player.avatar || player.display_name)} />
+                          <AvatarFallback>{player.display_name[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-bold text-lg">{player.display_name}</span>
+                      </div>
+                      <div className="font-mono text-xl font-black text-primary animate-result-reveal" style={{ animationDelay: `${(topPlayers.slice(0, 5).length - 1 - idx) * 160 + 260}ms` }}>
+                        {player.score.toLocaleString()} pts
+                      </div>
+                    </div>
+
+                    {/* Dynamic Leaderboard Progress Bar */}
+                    <div className="pt-0.5">
+                      <Progress
+                        value={scorePercent}
+                        indicatorClassName={barColor}
+                        trackClassName="h-2 bg-muted/60"
+                      />
+                    </div>
                   </div>
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={getAvatarUrl(player.avatar || player.display_name)} />
-                    <AvatarFallback>{player.display_name[0]}</AvatarFallback>
-                  </Avatar>
-                  <span className="font-bold text-lg">{player.display_name}</span>
-                </div>
-                <div className="font-mono text-xl font-black text-primary">
-                  {player.score.toLocaleString()} pts
-                </div>
-              </div>
-            ))}
+                )
+              })
+            })()}
           </div>
         </div>
       )}
@@ -342,22 +376,29 @@ export function PresenterView({
               alt="Huddle"
               className="h-16 w-auto mx-auto object-contain select-none animate-pulse"
             />
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight">Final Podium!</h1>
-            <p className="text-sm text-muted-foreground">Congratulations to all participants!</p>
+            <h1 className="text-4xl sm:text-5xl font-black tracking-tight animate-result-reveal">Final Podium!</h1>
+            <p className="text-sm text-muted-foreground animate-result-reveal" style={{ animationDelay: '150ms' }}>
+              Congratulations to all participants!
+            </p>
           </div>
 
-          {/* 3-Step Podium */}
+          {/* 3-Step Podium (Staggered Rising Pedestals) */}
           <div className="flex items-end justify-center gap-4 pt-8 w-full max-w-lg">
             {/* 2nd Place */}
             {topPlayers[1] && (
               <div className="flex flex-col items-center flex-1">
-                <Avatar className="h-16 w-16 mb-2 border-4 border-slate-300 shadow-md">
-                  <AvatarImage src={getAvatarUrl(topPlayers[1].avatar)} />
-                  <AvatarFallback>2</AvatarFallback>
-                </Avatar>
-                <div className="font-bold text-sm truncate max-w-[100px]">{topPlayers[1].display_name}</div>
-                <div className="text-xs text-muted-foreground font-mono">{topPlayers[1].score} pts</div>
-                <div className="w-full h-32 bg-slate-300 dark:bg-slate-700 rounded-t-2xl flex items-center justify-center font-black text-3xl text-slate-600 dark:text-slate-300 mt-3 shadow-md">
+                <div className="animate-rise-up flex flex-col items-center" style={{ animationDelay: '400ms' }}>
+                  <Avatar className="h-16 w-16 mb-2 border-4 border-slate-300 shadow-md">
+                    <AvatarImage src={getAvatarUrl(topPlayers[1].avatar)} />
+                    <AvatarFallback>2</AvatarFallback>
+                  </Avatar>
+                  <div className="font-bold text-sm truncate max-w-[100px]">{topPlayers[1].display_name}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{topPlayers[1].score} pts</div>
+                </div>
+                <div
+                  className="w-full h-32 bg-slate-300 dark:bg-slate-700 rounded-t-2xl flex items-center justify-center font-black text-3xl text-slate-600 dark:text-slate-300 mt-3 shadow-md animate-pedestal"
+                  style={{ animationDelay: '350ms' }}
+                >
                   2
                 </div>
               </div>
@@ -366,16 +407,21 @@ export function PresenterView({
             {/* 1st Place (Gold / Champion) */}
             {topPlayers[0] && (
               <div className="flex flex-col items-center flex-1">
-                <Crown className="h-8 w-8 text-amber-500 mb-1 animate-bounce" />
-                <Avatar className="h-20 w-20 mb-2 border-4 border-amber-400 shadow-xl ring-4 ring-amber-400/30">
-                  <AvatarImage src={getAvatarUrl(topPlayers[0].avatar)} />
-                  <AvatarFallback>1</AvatarFallback>
-                </Avatar>
-                <div className="font-black text-base truncate max-w-[120px]">{topPlayers[0].display_name}</div>
-                <div className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold">
-                  {topPlayers[0].score} pts
+                <div className="animate-rise-up flex flex-col items-center" style={{ animationDelay: '700ms' }}>
+                  <Crown className="h-8 w-8 text-amber-500 mb-1 animate-bounce" />
+                  <Avatar className="h-20 w-20 mb-2 border-4 border-amber-400 shadow-xl ring-4 ring-amber-400/30">
+                    <AvatarImage src={getAvatarUrl(topPlayers[0].avatar)} />
+                    <AvatarFallback>1</AvatarFallback>
+                  </Avatar>
+                  <div className="font-black text-base truncate max-w-[120px]">{topPlayers[0].display_name}</div>
+                  <div className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold">
+                    {topPlayers[0].score} pts
+                  </div>
                 </div>
-                <div className="w-full h-44 bg-amber-400 dark:bg-amber-600 rounded-t-2xl flex items-center justify-center font-black text-4xl text-amber-950 dark:text-amber-100 mt-3 shadow-xl">
+                <div
+                  className="w-full h-44 bg-amber-400 dark:bg-amber-600 rounded-t-2xl flex items-center justify-center font-black text-4xl text-amber-950 dark:text-amber-100 mt-3 shadow-xl animate-pedestal"
+                  style={{ animationDelay: '650ms' }}
+                >
                   1
                 </div>
               </div>
@@ -384,13 +430,18 @@ export function PresenterView({
             {/* 3rd Place */}
             {topPlayers[2] && (
               <div className="flex flex-col items-center flex-1">
-                <Avatar className="h-14 w-14 mb-2 border-4 border-amber-700 shadow-md">
-                  <AvatarImage src={getAvatarUrl(topPlayers[2].avatar)} />
-                  <AvatarFallback>3</AvatarFallback>
-                </Avatar>
-                <div className="font-bold text-sm truncate max-w-[100px]">{topPlayers[2].display_name}</div>
-                <div className="text-xs text-muted-foreground font-mono">{topPlayers[2].score} pts</div>
-                <div className="w-full h-24 bg-amber-700/80 rounded-t-2xl flex items-center justify-center font-black text-2xl text-amber-100 mt-3 shadow-md">
+                <div className="animate-rise-up flex flex-col items-center" style={{ animationDelay: '150ms' }}>
+                  <Avatar className="h-14 w-14 mb-2 border-4 border-amber-700 shadow-md">
+                    <AvatarImage src={getAvatarUrl(topPlayers[2].avatar)} />
+                    <AvatarFallback>3</AvatarFallback>
+                  </Avatar>
+                  <div className="font-bold text-sm truncate max-w-[100px]">{topPlayers[2].display_name}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{topPlayers[2].score} pts</div>
+                </div>
+                <div
+                  className="w-full h-24 bg-amber-700/80 rounded-t-2xl flex items-center justify-center font-black text-2xl text-amber-100 mt-3 shadow-md animate-pedestal"
+                  style={{ animationDelay: '100ms' }}
+                >
                   3
                 </div>
               </div>

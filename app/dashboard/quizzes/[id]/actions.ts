@@ -93,8 +93,8 @@ export async function saveQuizWithQuestions(
       text: q.text,
       options: q.options,
       correct_index: q.correct_index,
-      timer_seconds: q.timer_seconds || quizUpdates.default_timer_seconds,
-      points: q.points || quizUpdates.default_points,
+      timer_seconds: q.timer_seconds || quizUpdates.default_timer_seconds || 20,
+      points: q.points || quizUpdates.default_points || 1000,
       image_url: q.image_url || '',
       order_index: index,
     }))

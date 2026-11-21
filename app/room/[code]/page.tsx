@@ -20,7 +20,11 @@ import {
   Trophy,
   Loader2,
   UserX,
-  Sparkles,
+  Zap,
+  Crown,
+  Medal,
+  Lock,
+  Home,
 } from 'lucide-react'
 
 /**
@@ -78,6 +82,15 @@ export default function PlayerRoomPage({ params }: PageProps) {
   } | null>(null)
   const [playerScore, setPlayerScore] = useState(0)
   const [leaderboard, setLeaderboard] = useState<PlayerLeaderboardItem[]>([])
+  const [isAnswerRevealed, setIsAnswerRevealed] = useState(false)
+  const [correctAnswerIndex, setCorrectAnswerIndex] = useState<number | null>(null)
+  const pendingAnswerResultRef = useRef<{
+    is_correct: boolean
+    points_awarded: number
+    speed_bonus?: number
+    new_score: number
+    correct_index?: number
+  } | null>(null)
 
   const playerIdRef = useRef<string | null>(null)
   const playerTokenRef = useRef<string | null>(null)
@@ -109,14 +122,41 @@ export default function PlayerRoomPage({ params }: PageProps) {
         setSelectedAnswer(null)
         setHasAnswered(false)
         setAnswerResult(null)
+        setIsAnswerRevealed(false)
+        setCorrectAnswerIndex(null)
+        pendingAnswerResultRef.current = null
       })
       .on('broadcast', { event: 'question_ended' }, ({ payload }) => {
         setGameStatus('question_ended')
+        setIsAnswerRevealed(true)
+        if (payload?.correctIndex !== undefined) {
+          setCorrectAnswerIndex(payload.correctIndex)
+        }
+        if (pendingAnswerResultRef.current) {
+          const res = pendingAnswerResultRef.current
+          setAnswerResult({
+            isCorrect: res.is_correct,
+            pointsAwarded: res.points_awarded,
+            speedBonus: res.speed_bonus,
+            newScore: res.new_score,
+          })
+          setPlayerScore(res.new_score)
+        }
         if (payload?.leaderboard) setLeaderboard(payload.leaderboard)
       })
       .on('broadcast', { event: 'show_leaderboard' }, ({ payload }) => {
         setGameStatus('leaderboard')
         if (payload?.leaderboard) setLeaderboard(payload.leaderboard)
+      })
+      .on('broadcast', { event: 'score_updated' }, ({ payload }) => {
+        if (payload?.playerId && payload?.newScore !== undefined) {
+          setLeaderboard((prev) => {
+            const updated = prev.map((p) =>
+              p.id === payload.playerId ? { ...p, score: payload.newScore } : p
+            )
+            return [...updated].sort((a, b) => b.score - a.score)
+          })
+        }
       })
       .on('broadcast', { event: 'timer_extended' }, ({ payload }) => {
         setRemainingSeconds((prev) => prev + (payload?.addedSeconds || 15))
@@ -124,7 +164,11 @@ export default function PlayerRoomPage({ params }: PageProps) {
       })
       .on('broadcast', { event: 'game_ended' }, ({ payload }) => {
         setGameStatus('ended')
-        if (payload?.podium) setLeaderboard(payload.podium)
+        if (payload?.fullLeaderboard && payload.fullLeaderboard.length > 0) {
+          setLeaderboard(payload.fullLeaderboard)
+        } else if (payload?.podium && payload.podium.length > 0) {
+          setLeaderboard(payload.podium)
+        }
         confetti({ particleCount: 100, spread: 70 })
       })
       .on('broadcast', { event: 'player_kicked' }, ({ payload }) => {
@@ -271,7 +315,7 @@ export default function PlayerRoomPage({ params }: PageProps) {
       try {
         const { data: session } = await supabase
           .from('sessions')
-          .select('status, current_question_index, question_started_at, quiz_id, settings')
+          .select('status, current_question_index, question_started_at, quiz_id, settings, quizzes(default_timer_seconds)')
           .eq('id', sessionIdRef.current)
           .single()
 
@@ -299,24 +343,44 @@ export default function PlayerRoomPage({ params }: PageProps) {
 
           const q = questions?.[session.current_question_index]
           if (q) {
+            const defaultTimer =
+              (session.quizzes as { default_timer_seconds?: number } | null)?.default_timer_seconds || 20
+            const qTimer = q.timer_seconds || defaultTimer
             setGameStatus('live')
             setCurrentQuestion({
               id: q.id,
               text: q.text,
               options: Array.isArray(q.options) ? q.options : JSON.parse(q.options),
-              timer_seconds: q.timer_seconds,
+              timer_seconds: qTimer,
             })
             setQuestionIndex(session.current_question_index)
             const elapsed = session.question_started_at
               ? Math.floor((Date.now() - new Date(session.question_started_at).getTime()) / 1000)
               : 0
-            setRemainingSeconds(Math.max(0, (q.timer_seconds || 20) - elapsed))
+            setRemainingSeconds(Math.max(0, qTimer - elapsed))
             setSelectedAnswer(null)
             setHasAnswered(false)
             setAnswerResult(null)
+            setIsAnswerRevealed(false)
+            setCorrectAnswerIndex(null)
+            pendingAnswerResultRef.current = null
           }
         } else if (session.status === 'question_ended' && gameStatusRef.current !== 'question_ended') {
           setGameStatus('question_ended')
+          setIsAnswerRevealed(true)
+          if (pendingAnswerResultRef.current) {
+            const data = pendingAnswerResultRef.current
+            setAnswerResult({
+              isCorrect: data.is_correct,
+              pointsAwarded: data.points_awarded,
+              speedBonus: data.speed_bonus,
+              newScore: data.new_score,
+            })
+            setPlayerScore(data.new_score)
+            if (data.correct_index !== undefined) {
+              setCorrectAnswerIndex(data.correct_index)
+            }
+          }
         } else if (session.status === 'leaderboard' && gameStatusRef.current !== 'leaderboard') {
           setGameStatus('leaderboard')
         } else if (session.status === 'ended' && gameStatusRef.current !== 'ended') {
@@ -328,7 +392,7 @@ export default function PlayerRoomPage({ params }: PageProps) {
     return () => clearInterval(syncInterval)
   }, [isJoined, supabase])
 
-  // 5. Countdown timer when question is live
+  // 5. Countdown timer when question is live (Uniform timing)
   useEffect(() => {
     if (gameStatus !== 'live') return
 
@@ -336,6 +400,49 @@ export default function PlayerRoomPage({ params }: PageProps) {
       setRemainingSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
+
+          // Uniform Reveal: Timer reaches 0!
+          setIsAnswerRevealed(true)
+
+          if (pendingAnswerResultRef.current) {
+            const data = pendingAnswerResultRef.current
+            setAnswerResult({
+              isCorrect: data.is_correct,
+              pointsAwarded: data.points_awarded,
+              speedBonus: data.speed_bonus,
+              newScore: data.new_score,
+            })
+            setPlayerScore(data.new_score)
+            if (data.correct_index !== undefined) {
+              setCorrectAnswerIndex(data.correct_index)
+            }
+
+            // Broadcast score_updated to room channel so host & player leaderboards update dynamically
+            if (channelRef.current && playerIdRef.current) {
+              channelRef.current.send({
+                type: 'broadcast',
+                event: 'score_updated',
+                payload: {
+                  playerId: playerIdRef.current,
+                  newScore: data.new_score,
+                  pointsAwarded: data.points_awarded,
+                  isCorrect: data.is_correct,
+                },
+              })
+            }
+          }
+
+          // Uniform review period (3.5s) to view the revealed answer before advancing
+          setTimeout(() => {
+            fetch('/api/room/advance', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                room_code: roomCode,
+                current_index: questionIndexRef.current,
+              }),
+            }).catch(() => {})
+          }, 3500)
           return 0
         }
         return prev - 1
@@ -343,7 +450,23 @@ export default function PlayerRoomPage({ params }: PageProps) {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [gameStatus, questionIndex])
+  }, [gameStatus, questionIndex, roomCode])
+
+  // 5.2 Fetch final leaderboard on game end
+  useEffect(() => {
+    if (gameStatus === 'ended' && sessionIdRef.current) {
+      supabase
+        .from('players')
+        .select('id, display_name, avatar, score')
+        .eq('session_id', sessionIdRef.current)
+        .order('score', { ascending: false })
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            setLeaderboard(data)
+          }
+        })
+    }
+  }, [gameStatus, supabase])
 
   // 5.1 Countdown timer before Question 1 starts (5s countdown)
   useEffect(() => {
@@ -521,13 +644,8 @@ export default function PlayerRoomPage({ params }: PageProps) {
 
       const data = await res.json()
       if (res.ok) {
-        setAnswerResult({
-          isCorrect: data.is_correct,
-          pointsAwarded: data.points_awarded,
-          speedBonus: data.speed_bonus,
-          newScore: data.new_score,
-        })
-        setPlayerScore(data.new_score)
+        // Uniform timing: store result in ref — DO NOT reveal red/green or update score until timer expires
+        pendingAnswerResultRef.current = data
       }
     } catch {
       // Handled server-side
@@ -681,7 +799,7 @@ export default function PlayerRoomPage({ params }: PageProps) {
               {countdownSeconds}
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-              <Sparkles className="h-4 w-4 text-amber-500" />
+              <Zap className="h-4 w-4 text-primary" />
               <span>Speed points active &bull; First answers score higher</span>
             </div>
           </div>
@@ -719,13 +837,14 @@ export default function PlayerRoomPage({ params }: PageProps) {
               </CardHeader>
             </Card>
 
-            {/* Answer Options using elegant shadcn styling */}
-            {!hasAnswered ? (
-              <div className="grid grid-cols-1 gap-3 pt-1 w-full">
-                {currentQuestion.options.map((opt: string, idx: number) => {
-                  const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F']
-                  const letter = optionLetters[idx] || String.fromCharCode(65 + idx)
+            {/* Answer Options */}
+            <div className="grid grid-cols-1 gap-2.5 pt-1 w-full">
+              {currentQuestion.options.map((opt: string, idx: number) => {
+                const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F']
+                const letter = optionLetters[idx] || String.fromCharCode(65 + idx)
+                const isChosen = selectedAnswer === idx
 
+                if (!hasAnswered) {
                   return (
                     <Button
                       key={idx}
@@ -743,58 +862,89 @@ export default function PlayerRoomPage({ params }: PageProps) {
                       <span className="h-2 w-2 rounded-full bg-border group-hover:bg-primary transition-colors shrink-0" />
                     </Button>
                   )
-                })}
-              </div>
-            ) : (
-              <div className="w-full space-y-3">
-                {/* Show the selected locked answer option in full context */}
-                <div className="grid grid-cols-1 gap-2.5">
-                  {currentQuestion.options.map((opt: string, idx: number) => {
-                    const isChosen = selectedAnswer === idx
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-3.5 rounded-xl border-2 flex items-center gap-3 transition-all ${
-                          isChosen
-                            ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30'
-                            : 'border-border/40 bg-muted/20 opacity-50'
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold ${
-                            isChosen
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {String.fromCharCode(65 + idx)}
-                        </span>
-                        <span className={`text-sm flex-1 ${isChosen ? 'font-bold text-foreground' : 'text-muted-foreground'}`}>
-                          {opt}
-                        </span>
-                        {isChosen && (
-                          <Badge variant="default" className="text-[10px] gap-1 font-semibold">
-                            <CheckCircle2 className="h-3 w-3" /> Locked
-                          </Badge>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                }
 
-                <Card className="border shadow-sm bg-muted/30">
-                  <CardContent className="py-5 text-center space-y-2">
-                    <div className="h-10 w-10 mx-auto rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-                    <CardTitle className="font-extrabold text-base">
-                      Answer Submitted!
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Waiting for timer to expire and other players to answer...
-                    </CardDescription>
-                  </CardContent>
-                </Card>
+                // After answering:
+                let optionStyle = 'border-border/40 bg-muted/20 opacity-40'
+                let letterStyle = 'bg-muted text-muted-foreground'
+                let statusBadge = null
+
+                if (!isAnswerRevealed) {
+                  // Uniform Timing: Answer chosen, locked in, but timer is still running!
+                  if (isChosen) {
+                    optionStyle = 'border-primary bg-primary/10 ring-2 ring-primary/40 shadow-sm'
+                    letterStyle = 'bg-primary text-primary-foreground font-bold'
+                    statusBadge = (
+                      <Badge variant="outline" className="text-xs font-semibold text-primary border-primary/40 gap-1 animate-pulse">
+                        <Lock className="h-3 w-3" /> Answer Locked
+                      </Badge>
+                    )
+                  } else {
+                    optionStyle = 'border-border/40 bg-muted/20 opacity-45'
+                  }
+                } else {
+                  // Uniform Timing: Timer ended -> Reveal result!
+                  const isCorrectChoice =
+                    (isChosen && answerResult?.isCorrect) ||
+                    (correctAnswerIndex !== null && idx === correctAnswerIndex)
+                  const isIncorrectChoice = isChosen && answerResult && !answerResult.isCorrect
+
+                  if (isCorrectChoice) {
+                    // Correct: GREEN option
+                    optionStyle = 'border-emerald-500 bg-emerald-500/15 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/40 shadow-sm'
+                    letterStyle = 'bg-emerald-600 text-white font-bold'
+                    statusBadge = (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-xs gap-1 font-bold">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Correct {isChosen && answerResult?.pointsAwarded ? `+${answerResult.pointsAwarded} pts` : ''}
+                      </Badge>
+                    )
+                  } else if (isIncorrectChoice) {
+                    // Incorrect: RED option (as requested: "incorrect should just show on option red")
+                    optionStyle = 'border-red-500 bg-red-500/15 text-red-950 dark:text-red-100 ring-2 ring-red-500/40 shadow-sm'
+                    letterStyle = 'bg-red-600 text-white font-bold'
+                    statusBadge = (
+                      <Badge variant="destructive" className="text-xs gap-1 font-bold">
+                        <XCircle className="h-3.5 w-3.5" /> Incorrect
+                      </Badge>
+                    )
+                  } else {
+                    optionStyle = 'border-border/40 bg-muted/20 opacity-30'
+                  }
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className={`p-3.5 rounded-2xl border-2 flex items-center gap-3 transition-all ${optionStyle}`}
+                  >
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-mono text-sm font-bold ${letterStyle}`}
+                    >
+                      {letter}
+                    </span>
+                    <span className={`text-base flex-1 leading-snug break-words ${isChosen ? 'font-bold' : ''}`}>
+                      {opt}
+                    </span>
+                    {statusBadge}
+                  </div>
+                )
+              })}
+            </div>
+
+            {hasAnswered && (
+              <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-muted/40 border text-xs text-muted-foreground animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">Score: {playerScore} pts</span>
+                  {isAnswerRevealed && answerResult?.speedBonus ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                      (+{answerResult.speedBonus} speed bonus)
+                    </span>
+                  ) : null}
+                </div>
+                <span className="flex items-center gap-1 font-medium">
+                  <Clock className="h-3.5 w-3.5" />
+                  {!isAnswerRevealed ? 'Revealing answer when timer ends...' : 'Next question soon...'}
+                </span>
               </div>
             )}
           </div>
@@ -854,24 +1004,60 @@ export default function PlayerRoomPage({ params }: PageProps) {
               Your score: <span className="font-bold text-foreground font-mono">{playerScore} pts</span>
             </p>
             {leaderboard.length > 0 ? (
-              <div className="space-y-2 max-w-xs mx-auto text-left pt-2">
-                {leaderboard.slice(0, 5).map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-card border text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={getAvatarUrl(item.avatar)} />
-                        <AvatarFallback>{item.display_name[0]}</AvatarFallback>
-                      </Avatar>
-                      <span className="font-semibold truncate max-w-[120px]">
-                        {idx + 1}. {item.display_name}
-                      </span>
-                    </div>
-                    <span className="font-mono text-primary font-bold">{item.score} pts</span>
-                  </div>
-                ))}
+              <div className="space-y-2.5 max-w-sm mx-auto text-left pt-2">
+                {(() => {
+                  const maxScore = Math.max(...leaderboard.map((p) => p.score), 100)
+                  return leaderboard.slice(0, 5).map((item, idx) => {
+                    const scorePercent =
+                      maxScore > 0
+                        ? Math.min(100, Math.max(item.score > 0 ? 5 : 0, Math.round((item.score / maxScore) * 100)))
+                        : 0
+                    const barColor =
+                      idx === 0
+                        ? 'bg-amber-500'
+                        : idx === 1
+                        ? 'bg-slate-400'
+                        : idx === 2
+                        ? 'bg-amber-700'
+                        : 'bg-primary'
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="animate-rise-up flex flex-col p-3 rounded-xl bg-card border text-xs space-y-2 shadow-xs"
+                        style={{
+                          animationDelay: `${(leaderboard.slice(0, 5).length - 1 - idx) * 140 + 80}ms`,
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={getAvatarUrl(item.avatar)} />
+                              <AvatarFallback>{item.display_name[0]}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold truncate max-w-[140px]">
+                              {idx + 1}. {item.display_name}
+                            </span>
+                          </div>
+                          <span
+                            className="font-mono text-primary font-bold animate-result-reveal"
+                            style={{
+                              animationDelay: `${(leaderboard.slice(0, 5).length - 1 - idx) * 140 + 220}ms`,
+                            }}
+                          >
+                            {item.score} pts
+                          </span>
+                        </div>
+                        {/* Dynamic Leaderboard Progress Bar */}
+                        <Progress
+                          value={scorePercent}
+                          indicatorClassName={barColor}
+                          trackClassName="h-1.5 bg-muted/60"
+                        />
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             ) : (
               <div className="pt-4 text-xs text-muted-foreground italic">
@@ -881,19 +1067,311 @@ export default function PlayerRoomPage({ params }: PageProps) {
           </Card>
         )}
 
-        {/* 5. GAME ENDED */}
-        {gameStatus === 'ended' && (
-          <Card className="w-full border shadow-md text-center p-6 space-y-4 animate-in zoom-in-95">
-            <Trophy className="h-16 w-16 mx-auto text-amber-500" />
-            <CardTitle className="text-3xl font-black">Game Over!</CardTitle>
-            <p className="text-lg font-bold">
-              Final Score: <span className="text-primary font-mono">{playerScore} pts</span>
-            </p>
-            <CardDescription className="text-xs">
-              Thanks for playing Huddle! Check the presenter screen for the final podium winners.
-            </CardDescription>
-          </Card>
-        )}
+        {/* 5. GAME ENDED - COMPREHENSIVE LEADERBOARD & PODIUM */}
+        {gameStatus === 'ended' && (() => {
+          const sorted = [...leaderboard].sort((a, b) => b.score - a.score)
+          const myRankIndex = sorted.findIndex((p) => p.id === playerIdRef.current)
+          const myRank = myRankIndex !== -1 ? myRankIndex + 1 : null
+          const totalCount = sorted.length
+
+          const first = sorted[0]
+          const second = sorted[1]
+          const third = sorted[2]
+
+          return (
+            <div className="w-full space-y-4 animate-in zoom-in-95 duration-200">
+              {/* Header & Personal Card */}
+              <Card className="border shadow-lg text-center p-5 pb-6 space-y-4 bg-gradient-to-b from-card to-muted/20">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 shadow-inner">
+                  <Trophy className="h-8 w-8 animate-bounce" />
+                </div>
+                <div className="space-y-1">
+                  <CardTitle className="text-2xl sm:text-3xl font-black tracking-tight">
+                    Quiz Completed!
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Room <span className="font-mono font-bold text-foreground">{roomCode}</span> &bull; Final Standings
+                  </CardDescription>
+                </div>
+
+                {/* Personal Rank & Score Card */}
+                <div
+                  className="animate-rise-up p-3.5 rounded-2xl border bg-card/90 shadow-xs flex items-center justify-between"
+                  style={{ animationDelay: '100ms' }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-11 w-11 border-2 border-primary/40 shadow-xs">
+                      <AvatarImage src={getAvatarUrl(selectedAvatar)} />
+                      <AvatarFallback>{displayName[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="text-left">
+                      <div className="font-extrabold text-sm truncate max-w-[130px] flex items-center gap-1.5">
+                        {displayName}
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-bold">You</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        {myRank === 1 ? (
+                          <span className="text-amber-500 font-bold flex items-center gap-1">
+                            <Crown className="h-3.5 w-3.5" /> 1st Place Champion!
+                          </span>
+                        ) : myRank === 2 ? (
+                          <span className="text-slate-400 font-bold flex items-center gap-1">
+                            <Medal className="h-3.5 w-3.5" /> 2nd Place Podium!
+                          </span>
+                        ) : myRank === 3 ? (
+                          <span className="text-amber-700 font-bold flex items-center gap-1">
+                            <Medal className="h-3.5 w-3.5" /> 3rd Place Podium!
+                          </span>
+                        ) : myRank ? (
+                          <span>Rank #{myRank} of {totalCount}</span>
+                        ) : (
+                          <span>Participant</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className="font-mono text-xl font-black text-primary animate-result-reveal"
+                      style={{ animationDelay: '250ms' }}
+                    >
+                      {playerScore} <span className="text-xs font-medium text-muted-foreground">pts</span>
+                    </div>
+                    {myRank && (
+                      <Badge variant="outline" className="text-[10px] font-bold">
+                        Finish #{myRank}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top 3 Podium Visual Display */}
+                {sorted.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                      Podium Winners
+                    </div>
+                    <div className="flex items-end justify-center gap-2 max-w-sm mx-auto pt-2">
+                      {/* 2nd Place */}
+                      <div className="flex flex-col items-center flex-1">
+                        {second ? (
+                          <>
+                            <div
+                              className="animate-rise-up flex flex-col items-center"
+                              style={{ animationDelay: '400ms' }}
+                            >
+                              <Avatar className="h-12 w-12 mb-1.5 border-2 border-slate-300 shadow-sm">
+                                <AvatarImage src={getAvatarUrl(second.avatar)} />
+                                <AvatarFallback>2</AvatarFallback>
+                              </Avatar>
+                              <span className="font-bold text-xs truncate max-w-[75px]">{second.display_name}</span>
+                              <span
+                                className="text-[10px] text-muted-foreground font-mono font-semibold animate-result-reveal"
+                                style={{ animationDelay: '520ms' }}
+                              >
+                                {second.score} pts
+                              </span>
+                            </div>
+                            <div
+                              className="w-full h-16 bg-slate-300 dark:bg-slate-700 rounded-t-xl flex items-center justify-center font-black text-xl text-slate-700 dark:text-slate-200 mt-2 shadow-xs animate-pedestal"
+                              style={{ animationDelay: '350ms' }}
+                            >
+                              2
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-16 rounded-t-xl border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground opacity-40">
+                            -
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 1st Place */}
+                      <div className="flex flex-col items-center flex-1">
+                        {first ? (
+                          <>
+                            <div
+                              className="animate-rise-up flex flex-col items-center"
+                              style={{ animationDelay: '700ms' }}
+                            >
+                              <Crown className="h-5 w-5 text-amber-500 mb-0.5 animate-bounce" />
+                              <Avatar className="h-14 w-14 mb-1.5 border-2 border-amber-400 shadow-md ring-2 ring-amber-400/30">
+                                <AvatarImage src={getAvatarUrl(first.avatar)} />
+                                <AvatarFallback>1</AvatarFallback>
+                              </Avatar>
+                              <span className="font-black text-xs truncate max-w-[85px]">{first.display_name}</span>
+                              <span
+                                className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-bold animate-result-reveal"
+                                style={{ animationDelay: '820ms' }}
+                              >
+                                {first.score} pts
+                              </span>
+                            </div>
+                            <div
+                              className="w-full h-24 bg-amber-400 dark:bg-amber-600 rounded-t-xl flex items-center justify-center font-black text-2xl text-amber-950 dark:text-amber-100 mt-2 shadow-md animate-pedestal"
+                              style={{ animationDelay: '650ms' }}
+                            >
+                              1
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-24 rounded-t-xl border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground opacity-40">
+                            -
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3rd Place */}
+                      <div className="flex flex-col items-center flex-1">
+                        {third ? (
+                          <>
+                            <div
+                              className="animate-rise-up flex flex-col items-center"
+                              style={{ animationDelay: '150ms' }}
+                            >
+                              <Avatar className="h-10 w-10 mb-1.5 border-2 border-amber-700/60 shadow-sm">
+                                <AvatarImage src={getAvatarUrl(third.avatar)} />
+                                <AvatarFallback>3</AvatarFallback>
+                              </Avatar>
+                              <span className="font-bold text-xs truncate max-w-[75px]">{third.display_name}</span>
+                              <span
+                                className="text-[10px] text-muted-foreground font-mono font-semibold animate-result-reveal"
+                                style={{ animationDelay: '250ms' }}
+                              >
+                                {third.score} pts
+                              </span>
+                            </div>
+                            <div
+                              className="w-full h-12 bg-amber-700/80 dark:bg-amber-800 rounded-t-xl flex items-center justify-center font-black text-lg text-amber-100 mt-2 shadow-xs animate-pedestal"
+                              style={{ animationDelay: '100ms' }}
+                            >
+                              3
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-12 rounded-t-xl border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground opacity-40">
+                            -
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Full Standings List Card */}
+              <Card className="border shadow-md p-4">
+                <div className="flex items-center justify-between pb-3 border-b mb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-sm">
+                    <Trophy className="h-4 w-4 text-amber-500" /> Full Leaderboard
+                  </div>
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {sorted.length} players
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
+                  {sorted.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-muted-foreground italic">
+                      Leaderboard standings will appear shortly...
+                    </div>
+                  ) : (
+                    sorted.map((item, idx) => {
+                      const rank = idx + 1
+                      const isMe = item.id === playerIdRef.current
+                      const maxScore = Math.max(...sorted.map((p) => p.score), 100)
+                      const scorePercent =
+                        maxScore > 0
+                          ? Math.min(100, Math.max(item.score > 0 ? 5 : 0, Math.round((item.score / maxScore) * 100)))
+                          : 0
+                      const barColor =
+                        rank === 1
+                          ? 'bg-amber-500'
+                          : rank === 2
+                          ? 'bg-slate-400'
+                          : rank === 3
+                          ? 'bg-amber-700'
+                          : isMe
+                          ? 'bg-primary'
+                          : 'bg-primary/70'
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`animate-rise-up flex flex-col p-2.5 rounded-xl border transition-all text-xs space-y-2 ${
+                            isMe
+                              ? 'border-primary bg-primary/10 ring-1 ring-primary/40 font-bold'
+                              : 'border-border/60 bg-card hover:bg-muted/40'
+                          }`}
+                          style={{
+                            animationDelay: `${idx * 60 + 200}ms`,
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {rank === 1 ? (
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-black text-[10px] shadow-xs">
+                                  1
+                                </span>
+                              ) : rank === 2 ? (
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-black text-[10px] shadow-xs">
+                                  2
+                                </span>
+                              ) : rank === 3 ? (
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-black text-[10px] shadow-xs">
+                                  3
+                                </span>
+                              ) : (
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-[10px] font-semibold">
+                                  {rank}
+                                </span>
+                              )}
+                              <Avatar className="h-7 w-7 border shrink-0">
+                                <AvatarImage src={getAvatarUrl(item.avatar)} />
+                                <AvatarFallback>{item.display_name[0]}</AvatarFallback>
+                              </Avatar>
+                              <span className="font-semibold truncate max-w-[140px] flex items-center gap-1">
+                                {item.display_name}
+                                {isMe && <span className="text-[10px] text-primary font-bold">(You)</span>}
+                              </span>
+                            </div>
+                            <span
+                              className="font-mono font-bold text-primary text-xs animate-result-reveal"
+                              style={{
+                                animationDelay: `${idx * 60 + 320}ms`,
+                              }}
+                            >
+                              {item.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
+                            </span>
+                          </div>
+                          {/* Dynamic Leaderboard Progress Bar */}
+                          <Progress
+                            value={scorePercent}
+                            indicatorClassName={barColor}
+                            trackClassName="h-1.5 bg-muted/50"
+                          />
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* Back to Home CTA */}
+                <div className="pt-4 mt-3 border-t">
+                  <Button
+                    onClick={() => {
+                      localStorage.removeItem(`huddle_player_${roomCode}`)
+                      window.location.href = '/'
+                    }}
+                    className="w-full gap-2 font-bold py-5 text-sm"
+                  >
+                    <Home className="h-4 w-4" /> Exit to Homepage
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )
+        })()}
       </main>
 
       {/* Footer / Anti-cheating footnote */}

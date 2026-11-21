@@ -73,6 +73,23 @@ export async function getSessionAnalytics(sessionId: string) {
   const allAnswers = answers || []
   const allPlayers = players || []
 
+  // Enrich each player with individual correct and wrong question counts and accuracy
+  const enrichedPlayers = allPlayers.map((p) => {
+    const pAnswers = allAnswers.filter((a) => a.player_id === p.id)
+    const pCorrect = pAnswers.filter((a) => a.is_correct).length
+    const pIncorrect = pAnswers.filter((a) => !a.is_correct).length
+    const pTotal = pAnswers.length
+    const pAccuracy = pTotal > 0 ? Math.round((pCorrect / pTotal) * 100) : 0
+
+    return {
+      ...p,
+      correctCount: pCorrect,
+      incorrectCount: pIncorrect,
+      totalAnswered: pTotal,
+      accuracy: pAccuracy,
+    }
+  })
+
   const totalResponses = allAnswers.length
   const correctCount = allAnswers.filter((a) => a.is_correct).length
   const overallAccuracy = totalResponses > 0 ? Math.round((correctCount / totalResponses) * 100) : 0
@@ -111,7 +128,7 @@ export async function getSessionAnalytics(sessionId: string) {
   return {
     session,
     quizTitle: quiz?.title || 'Quiz',
-    players: allPlayers,
+    players: enrichedPlayers,
     overallAccuracy,
     avgResponseTimeSeconds: (avgResponseTimeMs / 1000).toFixed(1),
     totalPlayers: allPlayers.length,

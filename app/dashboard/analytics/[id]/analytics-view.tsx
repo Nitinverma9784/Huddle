@@ -21,6 +21,8 @@ import {
   AlertCircle,
   Crown,
   Medal,
+  Check,
+  X,
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -40,6 +42,10 @@ export interface PlayerRecord {
   display_name: string
   avatar: string
   score: number
+  correctCount?: number
+  incorrectCount?: number
+  totalAnswered?: number
+  accuracy?: number
 }
 
 export interface AnalyticsData {
@@ -71,11 +77,22 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
 
   const handleExportCsv = () => {
     try {
-      const headers = ['Rank', 'Player Name', 'Score', 'Avatar ID']
+      const headers = [
+        'Rank',
+        'Player Name',
+        'Score',
+        'Correct Questions',
+        'Wrong Questions',
+        'Accuracy %',
+        'Avatar ID',
+      ]
       const rows = players.map((p, idx) => [
         idx + 1,
         `"${p.display_name.replace(/"/g, '""')}"`,
         p.score,
+        p.correctCount ?? 0,
+        p.incorrectCount ?? 0,
+        `${p.accuracy ?? 0}%`,
         p.avatar,
       ])
 
@@ -129,7 +146,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
 
       {/* KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground">
               Total Players
@@ -142,7 +159,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground">
               Overall Accuracy
@@ -155,7 +172,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-2xl border border-border/80 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground">
               Avg Response Time
@@ -171,7 +188,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
 
       {/* Most Missed Questions Warning Box */}
       {mostMissed.length > 0 && (
-        <Card className="border-amber-500/30 bg-amber-500/5">
+        <Card className="rounded-2xl border-amber-500/30 bg-amber-500/5 shadow-xs overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
               <AlertCircle className="h-5 w-5" />
@@ -185,7 +202,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
             {mostMissed.map((q) => (
               <div
                 key={q.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-card border text-xs"
+                className="flex items-center justify-between p-3 rounded-xl bg-card border text-xs"
               >
                 <div className="space-y-0.5 max-w-xl">
                   <span className="font-bold">Q{q.order}: </span>
@@ -201,28 +218,28 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
       )}
 
       {/* Per-Question Accuracy Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Question Breakdown</CardTitle>
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 bg-muted/20 border-b">
+          <CardTitle className="text-lg font-bold">Question Breakdown</CardTitle>
           <CardDescription className="text-xs">
             Performance and response metrics for each individual question.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">#</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-12 pl-4">#</TableHead>
                 <TableHead>Question</TableHead>
                 <TableHead className="text-center">Responses</TableHead>
                 <TableHead className="text-center">Accuracy</TableHead>
-                <TableHead className="text-right">Avg Time</TableHead>
+                <TableHead className="text-right pr-4">Avg Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {perQuestionStats.map((q) => (
-                <TableRow key={q.id}>
-                  <TableCell className="font-bold text-xs">{q.order}</TableCell>
+                <TableRow key={q.id} className="hover:bg-muted/40 transition-colors">
+                  <TableCell className="font-bold text-xs pl-4">{q.order}</TableCell>
                   <TableCell className="font-medium text-xs max-w-md truncate">
                     {q.text}
                   </TableCell>
@@ -237,7 +254,7 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                       {q.accuracy}%
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right text-xs font-mono">
+                  <TableCell className="text-right text-xs font-mono pr-4">
                     {q.avgTimeSeconds}s
                   </TableCell>
                 </TableRow>
@@ -247,27 +264,37 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
         </CardContent>
       </Card>
 
-      {/* Final Leaderboard */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Final Standings</CardTitle>
-          <CardDescription className="text-xs">
-            Scores and rankings of all participants in this session.
-          </CardDescription>
+      {/* Final Leaderboard / Participants Performance */}
+      <Card className="rounded-2xl border border-border/80 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 bg-muted/20 border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold">Participant Performance</CardTitle>
+              <CardDescription className="text-xs">
+                Scores, correct &amp; wrong answers, and individual accuracy for each player.
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs">
+              {players.length} players
+            </Badge>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Rank</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-16 pl-4">Rank</TableHead>
                 <TableHead>Player</TableHead>
-                <TableHead className="text-right">Total Score</TableHead>
+                <TableHead className="text-center">Correct</TableHead>
+                <TableHead className="text-center">Wrong</TableHead>
+                <TableHead className="text-center">Accuracy</TableHead>
+                <TableHead className="text-right pr-4">Total Score</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {players.map((p, idx) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-bold text-xs">
+                <TableRow key={p.id} className="hover:bg-muted/40 transition-colors">
+                  <TableCell className="font-bold text-xs pl-4">
                     <div className="flex items-center gap-1.5">
                       {idx === 0 && <Crown className="h-4 w-4 text-amber-500" />}
                       {idx === 1 && <Medal className="h-4 w-4 text-slate-400" />}
@@ -277,14 +304,38 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Avatar className="h-7 w-7">
+                      <Avatar className="h-7 w-7 border">
                         <AvatarImage src={`https://api.dicebear.com/7.x/bottts/svg?seed=${p.avatar}`} />
                         <AvatarFallback>{p.display_name[0]}</AvatarFallback>
                       </Avatar>
                       <span className="font-semibold text-xs">{p.display_name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-mono font-bold text-sm text-primary">
+                  <TableCell className="text-center">
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                    >
+                      <Check className="h-3 w-3" /> {p.correctCount ?? 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge
+                      variant="outline"
+                      className="bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30 font-mono text-xs font-bold gap-1 px-2 py-0.5"
+                    >
+                      <X className="h-3 w-3" /> {p.incorrectCount ?? 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge
+                      variant={(p.accuracy ?? 0) >= 70 ? 'default' : (p.accuracy ?? 0) >= 40 ? 'secondary' : 'destructive'}
+                      className="font-mono text-xs px-2 py-0.5"
+                    >
+                      {p.accuracy ?? 0}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-bold text-sm text-primary pr-4">
                     {p.score.toLocaleString()} pts
                   </TableCell>
                 </TableRow>

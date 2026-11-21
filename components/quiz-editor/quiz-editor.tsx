@@ -268,9 +268,13 @@ function SortableQuestionCard({
               min={5}
               max={120}
               value={question.timer_seconds}
-              onChange={(e) =>
-                onUpdate({ ...question, timer_seconds: parseInt(e.target.value, 10) || 20 })
-              }
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10)
+                onUpdate({
+                  ...question,
+                  timer_seconds: isNaN(parsed) ? 5 : parsed,
+                })
+              }}
               className="h-8 text-xs"
             />
           </div>
@@ -312,6 +316,7 @@ export function QuizEditor({ initialQuiz, initialQuestions }: QuizEditorProps) {
     initialQuestions.map((q, idx) => ({
       ...q,
       id: q.id || `q-${idx}`,
+      timer_seconds: q.timer_seconds || initialQuiz.default_timer_seconds || 20,
     }))
   )
   const [saving, setSaving] = useState(false)
@@ -346,7 +351,7 @@ export function QuizEditor({ initialQuiz, initialQuestions }: QuizEditorProps) {
       text: '',
       options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
       correct_index: 0,
-      timer_seconds: quiz.default_timer_seconds || 20,
+      timer_seconds: quiz.default_timer_seconds || 5,
       points: quiz.default_points || 1000,
       image_url: '',
       order_index: questions.length,
@@ -512,20 +517,51 @@ export function QuizEditor({ initialQuiz, initialQuestions }: QuizEditorProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             <div className="space-y-1.5">
-              <Label className="text-xs">Default Timer (Seconds)</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Default Timer (Seconds)</Label>
+                <span className="text-[10px] text-muted-foreground font-mono">{quiz.default_timer_seconds}s</span>
+              </div>
               <Input
                 type="number"
                 min={5}
                 max={120}
                 value={quiz.default_timer_seconds}
-                onChange={(e) =>
-                  setQuiz({
-                    ...quiz,
-                    default_timer_seconds: parseInt(e.target.value, 10) || 20,
-                  })
-                }
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10)
+                  const newTimer = isNaN(val) ? 5 : val
+                  const oldTimer = quiz.default_timer_seconds
+                  setQuiz((prev) => ({
+                    ...prev,
+                    default_timer_seconds: newTimer,
+                  }))
+                  // Propagate to questions that used the default timer
+                  setQuestions((prev) =>
+                    prev.map((q) =>
+                      !q.timer_seconds || q.timer_seconds === oldTimer
+                        ? { ...q, timer_seconds: newTimer }
+                        : q
+                    )
+                  )
+                }}
                 className="text-xs"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setQuestions((prev) =>
+                    prev.map((q) => ({
+                      ...q,
+                      timer_seconds: quiz.default_timer_seconds,
+                    }))
+                  )
+                  toast.success(`Applied ${quiz.default_timer_seconds}s timer to all questions`)
+                }}
+                className="w-full text-xs h-7 mt-1"
+              >
+                Apply {quiz.default_timer_seconds}s to all {questions.length} questions
+              </Button>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Default Base Points</Label>

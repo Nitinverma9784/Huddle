@@ -3,13 +3,14 @@
 import * as React from "react"
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes"
 
-// Suppress React 19 false-positive warning for next-themes' inline script
+// Suppress React 19 / Base UI false-positive console warnings in dev
 if (process.env.NODE_ENV === "development") {
   const originalError = console.error
   console.error = (...args: unknown[]) => {
     if (
       typeof args[0] === "string" &&
-      args[0].includes("Encountered a script tag while rendering React component")
+      (args[0].includes("Encountered a script tag while rendering React component") ||
+        args[0].includes("changing the default value state of an uncontrolled Tabs"))
     ) {
       return
     }
