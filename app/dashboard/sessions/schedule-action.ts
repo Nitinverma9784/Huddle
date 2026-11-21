@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generateRoomCode } from '@/lib/room-code'
-import { Resend } from 'resend'
+import { sendEmailViaSendgrid } from '@/lib/email/sendgrid'
 import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
 import { generateIcsCalendar } from '@/lib/email/ics'
 import { revalidatePath } from 'next/cache'
@@ -73,51 +73,47 @@ export async function scheduleSessionWithInvites(input: ScheduleSessionInput) {
     }))
     await supabase.from('invites').insert(invitesData)
 
-    // Send emails via Resend if API key is present
-    const resendApiKey = process.env.RESEND_API_KEY
-    if (resendApiKey) {
-      try {
-        const resend = new Resend(resendApiKey)
-        const icsContent = await generateIcsCalendar({
-          title: quiz.title,
-          description: `Live multiplayer quiz hosted on Huddle.`,
-          startIso: input.scheduledAt,
-          url: joinUrl,
-          organizerName: hostName,
+    // Dispatch email invitations with ICS calendar attachment via SendGrid API
+    try {
+      const icsContent = await generateIcsCalendar({
+        title: quiz.title,
+        description: `Live multiplayer quiz hosted on Huddle.`,
+        startIso: input.scheduledAt,
+        url: joinUrl,
+        organizerName: hostName,
+      })
+
+      const icsBase64 = Buffer.from(icsContent).toString('base64')
+
+      for (const email of uniqueEmails) {
+        await sendEmailViaSendgrid({
+          to: email,
+          subject: `Invitation: ${quiz.title} on Huddle`,
+          html: renderInviteHtml({
+            quizTitle: quiz.title,
+            hostName,
+            scheduledAt: input.scheduledAt,
+            timezone: input.timezone,
+            joinUrl,
+          }),
+          text: renderInviteText({
+            quizTitle: quiz.title,
+            hostName,
+            scheduledAt: input.scheduledAt,
+            timezone: input.timezone,
+            joinUrl,
+          }),
+          attachments: [
+            {
+              filename: 'invite.ics',
+              content: icsBase64,
+              type: 'text/calendar',
+            },
+          ],
         })
-
-        const icsBase64 = Buffer.from(icsContent).toString('base64')
-
-        for (const email of uniqueEmails) {
-          await resend.emails.send({
-            from: 'Huddle <invites@huddle.live>',
-            to: email,
-            subject: `Invitation: ${quiz.title} on Huddle`,
-            html: renderInviteHtml({
-              quizTitle: quiz.title,
-              hostName,
-              scheduledAt: input.scheduledAt,
-              timezone: input.timezone,
-              joinUrl,
-            }),
-            text: renderInviteText({
-              quizTitle: quiz.title,
-              hostName,
-              scheduledAt: input.scheduledAt,
-              timezone: input.timezone,
-              joinUrl,
-            }),
-            attachments: [
-              {
-                filename: 'invite.ics',
-                content: icsBase64,
-              },
-            ],
-          })
-        }
-      } catch (err) {
-        console.warn('Resend email error (non-fatal):', err)
       }
+    } catch (err) {
+      console.warn('[Schedule Action] SendGrid email delivery warning (non-fatal):', err)
     }
   }
 

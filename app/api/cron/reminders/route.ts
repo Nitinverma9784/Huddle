@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Resend } from 'resend'
+import { sendEmailViaSendgrid } from '@/lib/email/sendgrid'
 import { renderInviteHtml, renderInviteText } from '@/lib/email/templates'
+
+// Run on Vercel Edge Runtime
+export const runtime = 'edge'
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,12 +15,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized cron request' }, { status: 401 })
     }
 
-    const resendApiKey = process.env.RESEND_API_KEY
-    if (!resendApiKey) {
-      return NextResponse.json({ message: 'Resend API key not configured, skipping cron' })
-    }
-
-    const resend = new Resend(resendApiKey)
     const supabase = createAdminClient()
     const now = new Date()
 
@@ -43,6 +40,7 @@ export async function GET(req: NextRequest) {
     }
 
     let remindersSent = 0
+    const remindedInviteIds: string[] = []
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
     for (const session of sessions) {
@@ -52,10 +50,9 @@ export async function GET(req: NextRequest) {
 
       for (const invite of invites) {
         if (invite.status === 'sent') {
-          await resend.emails.send({
-            from: 'Huddle Reminders <reminders@huddle.live>',
+          const res = await sendEmailViaSendgrid({
             to: invite.email,
-            subject: `Reminder: ${quiz?.title || 'Quiz'} is starting soon!`,
+            subject: `Reminder: "${quiz?.title || 'Quiz'}" is starting soon on Huddle!`,
             html: renderInviteHtml({
               quizTitle: quiz?.title || 'Live Quiz',
               hostName: 'Your Host',
@@ -71,18 +68,31 @@ export async function GET(req: NextRequest) {
               joinUrl,
             }),
           })
-          remindersSent++
+
+          if (res.success) {
+            remindersSent++
+            remindedInviteIds.push(invite.id)
+          }
         }
       }
     }
 
+    if (remindedInviteIds.length > 0) {
+      await supabase
+        .from('invites')
+        .update({ status: 'reminded' })
+        .in('id', remindedInviteIds)
+    }
+
     return NextResponse.json({
       success: true,
+      runtime: 'vercel-edge',
+      provider: 'sendgrid',
       remindersSent,
       checkedSessions: sessions.length,
     })
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown cron error'
+    const msg = err instanceof Error ? err.message : 'Unknown Edge reminder error'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
