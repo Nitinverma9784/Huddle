@@ -117,6 +117,35 @@ export async function sendEmailViaSendgrid(
 
     const errorBody = await res.text()
     console.warn(`[SendGrid] API responded with HTTP ${res.status}:`, errorBody)
+
+    // Fallback to Resend if configured and SendGrid credits are exceeded or sender unverified
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const { Resend } = await import('resend')
+        const resend = new Resend(process.env.RESEND_API_KEY)
+        const fallbackRes = await resend.emails.send({
+          from: 'Huddle <invites@huddle.live>',
+          to: validRecipients,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+          attachments: options.attachments?.map((att) => ({
+            filename: att.filename,
+            content: att.content,
+          })),
+        })
+
+        if (!fallbackRes.error) {
+          return {
+            success: true,
+            messageId: fallbackRes.data?.id,
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('[Email Service] Secondary Resend fallback failed:', fallbackErr)
+      }
+    }
+
     return {
       success: false,
       error: `SendGrid error (${res.status}): ${errorBody}`,
