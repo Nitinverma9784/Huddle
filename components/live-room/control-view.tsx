@@ -350,12 +350,18 @@ export function ControlView({
         </CardContent>
       </Card>
 
-      {/* Connected Players Management */}
+      {/* Live Leaderboard & Connected Players */}
       <Card className="border shadow-sm">
-        <CardHeader className="py-3 border-b bg-muted/10">
-          <CardTitle className="text-sm font-semibold">
-            Connected Players ({players.length})
-          </CardTitle>
+        <CardHeader className="py-3 border-b bg-muted/10 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-amber-500" />
+            <CardTitle className="text-sm font-semibold">
+              Live Leaderboard & Roster ({players.length})
+            </CardTitle>
+          </div>
+          <Badge variant="outline" className="text-[10px] font-mono">
+            Live Rankings
+          </Badge>
         </CardHeader>
         <CardContent className="p-4 space-y-2">
           {players.length === 0 ? (
@@ -364,26 +370,57 @@ export function ControlView({
             </div>
           ) : (
             <div className="divide-y text-xs">
-              {players.map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-2.5">
-                    <Avatar className="h-7 w-7">
-                      <AvatarImage src={getAvatarUrl(p.avatar)} />
-                      <AvatarFallback>{p.display_name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="font-semibold text-sm">{p.display_name}</span>
-                    <span className="font-mono text-muted-foreground">({p.score} pts)</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onKickPlayer(p.id)}
-                    className="h-7 text-xs text-destructive hover:text-destructive gap-1"
-                  >
-                    <UserX className="h-3.5 w-3.5" /> Kick
-                  </Button>
-                </div>
-              ))}
+              {[...players]
+                .sort((a, b) => b.score - a.score)
+                .map((p, idx) => {
+                  const rank = idx + 1
+                  const rankBadge =
+                    rank === 1 ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-[10px] shadow-xs">
+                        1
+                      </span>
+                    ) : rank === 2 ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-[10px] shadow-xs">
+                        2
+                      </span>
+                    ) : rank === 3 ? (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-[10px] shadow-xs">
+                        3
+                      </span>
+                    ) : (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-[10px]">
+                        {rank}
+                      </span>
+                    )
+
+                  return (
+                    <div key={p.id} className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {rankBadge}
+                        <Avatar className="h-7 w-7 border shrink-0">
+                          <AvatarImage src={getAvatarUrl(p.avatar)} />
+                          <AvatarFallback>{p.display_name[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-semibold text-sm truncate max-w-[140px]">
+                          {p.display_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono font-bold text-sm text-primary">
+                          {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onKickPlayer(p.id)}
+                          className="h-7 px-2 text-xs text-destructive hover:text-destructive gap-1"
+                        >
+                          <UserX className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
             </div>
           )}
         </CardContent>

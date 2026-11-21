@@ -1,12 +1,53 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { User } from '@supabase/supabase-js'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { ChevronDown, Menu, X } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, Menu, X, LayoutDashboard, LogOut, ArrowRight } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function Navbar({ onOpenJoin }: { onOpenJoin?: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const router = useRouter()
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ?? null)
+    })
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [supabase])
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      toast.success('Signed out successfully')
+      router.refresh()
+    } catch {
+      toast.error('Failed to sign out')
+    }
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-purple-900/20 dark:border-purple-900/30 bg-background/80 backdrop-blur-xl transition-colors">
@@ -44,7 +85,7 @@ export function Navbar({ onOpenJoin }: { onOpenJoin?: () => void }) {
           {onOpenJoin && (
             <button
               onClick={onOpenJoin}
-              className="hidden sm:inline-flex text-xs font-semibold text-purple-400 dark:text-purple-300 hover:text-purple-300 px-3 py-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 transition-colors"
+              className="hidden sm:inline-flex text-xs font-semibold text-purple-400 dark:text-purple-300 hover:text-purple-300 px-3 py-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 transition-colors cursor-pointer"
             >
               Enter Code
             </button>
@@ -53,19 +94,83 @@ export function Navbar({ onOpenJoin }: { onOpenJoin?: () => void }) {
           {/* Theme Toggle Sun / Moon Icon */}
           <ThemeToggle />
 
-          <Link
-            href="/login"
-            className="text-xs font-medium text-foreground/80 hover:text-foreground px-3 py-2 rounded-lg transition-colors hidden sm:inline-block"
-          >
-            Log in
-          </Link>
+          {/* Logged-In User View vs Guest View */}
+          {user ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="text-xs font-medium text-foreground/80 hover:text-foreground px-3 py-2 rounded-lg transition-colors hidden sm:inline-block"
+              >
+                Dashboard
+              </Link>
 
-          <Link
-            href="/login"
-            className="text-xs font-semibold px-4 py-2 rounded-xl text-white bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 shadow-md shadow-purple-600/25 active:scale-95 transition-all"
-          >
-            Get started
-          </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-2 rounded-full outline-none hover:ring-2 hover:ring-primary/40 transition-all p-0.5 cursor-pointer">
+                  <Avatar className="h-8 w-8 border">
+                    <AvatarImage
+                      src={user.user_metadata?.avatar_url || ''}
+                      alt={user.user_metadata?.full_name || 'User'}
+                    />
+                    <AvatarFallback className="text-xs font-bold">
+                      {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
+                  <DropdownMenuGroup>
+                    <div className="px-2.5 py-1.5 text-xs">
+                      <p className="font-bold text-foreground truncate">
+                        {user.user_metadata?.full_name || 'Host'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate font-mono">
+                        {user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => router.push('/dashboard')}
+                    className="cursor-pointer gap-2 text-xs py-2"
+                  >
+                    <LayoutDashboard className="h-3.5 w-3.5" />
+                    <span>Dashboard</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleSignOut}
+                    className="cursor-pointer gap-2 text-xs py-2 text-destructive focus:text-destructive"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Link
+                href="/dashboard"
+                className="text-xs font-semibold px-4 py-2 rounded-xl text-white bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 shadow-md shadow-purple-600/25 active:scale-95 transition-all hidden sm:inline-flex items-center gap-1.5"
+              >
+                <span>Dashboard</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="text-xs font-medium text-foreground/80 hover:text-foreground px-3 py-2 rounded-lg transition-colors hidden sm:inline-block"
+              >
+                Log in
+              </Link>
+
+              <Link
+                href="/login"
+                className="text-xs font-semibold px-4 py-2 rounded-xl text-white bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 shadow-md shadow-purple-600/25 active:scale-95 transition-all"
+              >
+                Get started
+              </Link>
+            </>
+          )}
 
           {/* Mobile Menu Toggle Button */}
           <button
@@ -120,12 +225,50 @@ export function Navbar({ onOpenJoin }: { onOpenJoin?: () => void }) {
                 Enter Game Code
               </button>
             )}
-            <Link
-              href="/login"
-              className="w-full text-center text-xs font-semibold py-2 rounded-xl bg-purple-600 text-white"
-            >
-              Sign In
-            </Link>
+
+            {user ? (
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex items-center gap-2.5 px-1 py-1">
+                  <Avatar className="h-8 w-8 border">
+                    <AvatarImage
+                      src={user.user_metadata?.avatar_url || ''}
+                      alt={user.user_metadata?.full_name || 'User'}
+                    />
+                    <AvatarFallback className="text-xs font-bold">
+                      {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="text-xs min-w-0">
+                    <p className="font-bold truncate">{user.user_metadata?.full_name || 'Host'}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                  </div>
+                </div>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center text-xs font-semibold py-2 rounded-xl bg-purple-600 text-white block"
+                >
+                  Go to Dashboard
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    handleSignOut()
+                  }}
+                  className="w-full text-center text-xs font-medium py-2 rounded-xl text-destructive hover:bg-destructive/10 border border-destructive/20 block"
+                >
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full text-center text-xs font-semibold py-2 rounded-xl bg-purple-600 text-white block"
+              >
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
       )}

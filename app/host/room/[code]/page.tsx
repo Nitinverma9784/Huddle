@@ -17,10 +17,20 @@ import { PresenterPlayer, PresenterQuestion } from '@/components/live-room/prese
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { PresenterView } from '@/components/live-room/presenter-view'
 import { ControlView, IntegrityAlert } from '@/components/live-room/control-view'
-import { buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { getAvatarUrl } from '@/lib/avatar'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { ScreenShare, Smartphone, ArrowLeft, Loader2 } from 'lucide-react'
+import { ScreenShare, Smartphone, ArrowLeft, Loader2, Trophy } from 'lucide-react'
 import Link from 'next/link'
 
 interface PageProps {
@@ -65,6 +75,7 @@ export default function HostRoomPage({ params }: PageProps) {
   const [countdownSeconds, setCountdownSeconds] = useState(5)
   const [autoAdvance, setAutoAdvance] = useState(true)
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<number | null>(null)
+  const [showLiveLeaderboardModal, setShowLiveLeaderboardModal] = useState(false)
 
   const currentQIndex = session?.current_question_index ?? 0
   const currentQuestion = questions[currentQIndex] || null
@@ -135,6 +146,10 @@ export default function HostRoomPage({ params }: PageProps) {
             [payload.selectedIndex]: (prev[payload.selectedIndex] || 0) + 1,
           }))
         }
+        try {
+          const fresh = await getHostRoomData(roomCode)
+          setPlayers(fresh.players)
+        } catch {}
       })
       .on('broadcast', { event: 'tab_switched' }, ({ payload }) => {
         if (payload?.playerId) {
@@ -185,8 +200,12 @@ export default function HostRoomPage({ params }: PageProps) {
           table: 'answers',
           filter: `session_id=eq.${session.id}`,
         },
-        () => {
+        async () => {
           setAnswersCount((prev) => prev + 1)
+          try {
+            const fresh = await getHostRoomData(roomCode)
+            setPlayers(fresh.players)
+          } catch {}
         }
       )
       .subscribe()
@@ -516,20 +535,36 @@ export default function HostRoomPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* View Mode Toggle */}
-        <Tabs
-          value={viewMode}
-          onValueChange={(val) => setViewMode(val as 'presenter' | 'control')}
-        >
-          <TabsList className="h-9">
-            <TabsTrigger value="presenter" className="gap-1.5 text-xs">
-              <ScreenShare className="h-3.5 w-3.5" /> Presenter View
-            </TabsTrigger>
-            <TabsTrigger value="control" className="gap-1.5 text-xs">
-              <Smartphone className="h-3.5 w-3.5" /> Control View
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Header Right Controls: Live Leaderboard + View Mode Toggle */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowLiveLeaderboardModal(true)}
+            className="gap-1.5 text-xs font-semibold h-9 shadow-xs"
+          >
+            <Trophy className="h-3.5 w-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Live</span> Leaderboard
+            <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono">
+              {players.length}
+            </Badge>
+          </Button>
+
+          {/* View Mode Toggle */}
+          <Tabs
+            value={viewMode}
+            onValueChange={(val) => setViewMode(val as 'presenter' | 'control')}
+          >
+            <TabsList className="h-9">
+              <TabsTrigger value="presenter" className="gap-1.5 text-xs">
+                <ScreenShare className="h-3.5 w-3.5" /> Presenter View
+              </TabsTrigger>
+              <TabsTrigger value="control" className="gap-1.5 text-xs">
+                <Smartphone className="h-3.5 w-3.5" /> Control View
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </header>
 
       {/* Main View Area */}
@@ -575,6 +610,68 @@ export default function HostRoomPage({ params }: PageProps) {
           />
         )}
       </main>
+
+      {/* Live Leaderboard Modal Dialog for Host */}
+      <Dialog open={showLiveLeaderboardModal} onOpenChange={setShowLiveLeaderboardModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="pb-2 border-b">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <DialogTitle className="text-lg font-bold">Live Leaderboard</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs">
+              Real-time rankings for {quiz?.title || 'this session'} ({roomCode})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-y-auto divide-y text-xs py-2">
+            {players.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground italic">
+                No players joined yet.
+              </div>
+            ) : (
+              [...players]
+                .sort((a, b) => b.score - a.score)
+                .map((p, idx) => {
+                  const rank = idx + 1
+                  return (
+                    <div key={p.id} className="flex items-center justify-between py-2.5 px-1">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {rank === 1 ? (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-xs shadow-xs">
+                            1
+                          </span>
+                        ) : rank === 2 ? (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-400 text-white font-bold text-xs shadow-xs">
+                            2
+                          </span>
+                        ) : rank === 3 ? (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-700 text-white font-bold text-xs shadow-xs">
+                            3
+                          </span>
+                        ) : (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-mono text-xs font-semibold">
+                            {rank}
+                          </span>
+                        )}
+                        <Avatar className="h-8 w-8 border shrink-0">
+                          <AvatarImage src={getAvatarUrl(p.avatar)} />
+                          <AvatarFallback>{p.display_name[0]}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-semibold text-sm truncate max-w-[160px]">
+                          {p.display_name}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-sm text-primary">
+                        {p.score} <span className="text-[10px] text-muted-foreground font-normal">pts</span>
+                      </span>
+                    </div>
+                  )
+                })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { Navbar } from '@/components/landing/navbar'
 import { JoinModal } from '@/components/landing/join-modal'
 import {
@@ -27,6 +28,20 @@ const SOCIAL_AVATARS = [
 
 export default function HomePage() {
   const [joinModalOpen, setJoinModalOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      setIsLoggedIn(!!data.user)
+    })
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session?.user)
+    })
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#fcfaff] dark:bg-[#07040d] text-foreground selection:bg-purple-500 selection:text-white relative overflow-hidden transition-colors duration-300">
@@ -71,10 +86,10 @@ export default function HomePage() {
                 {/* Action Buttons */}
                 <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-1">
                   <Link
-                    href="/login"
+                    href={isLoggedIn ? '/dashboard' : '/login'}
                     className="px-6 py-3.5 rounded-full font-semibold text-sm text-white bg-gradient-to-r from-purple-600 via-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 shadow-xl shadow-purple-600/30 active:scale-95 transition-all flex items-center gap-2 group"
                   >
-                    <span>Create a Quiz</span>
+                    <span>{isLoggedIn ? 'Go to Dashboard' : 'Create a Quiz'}</span>
                     <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                   </Link>
 

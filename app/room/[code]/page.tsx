@@ -257,6 +257,14 @@ export default function PlayerRoomPage({ params }: PageProps) {
   }, [roomCode, handleJoin])
 
   // 4. Active Lobby & Live Question Polling (Ensures players dynamic sync even if websocket dropped)
+  const gameStatusRef = useRef(gameStatus)
+  const questionIndexRef = useRef(questionIndex)
+
+  useEffect(() => {
+    gameStatusRef.current = gameStatus
+    questionIndexRef.current = questionIndex
+  }, [gameStatus, questionIndex])
+
   useEffect(() => {
     if (!isJoined || !sessionIdRef.current) return
     const syncInterval = setInterval(async () => {
@@ -274,13 +282,13 @@ export default function PlayerRoomPage({ params }: PageProps) {
           : null
 
         if (cdUntil && cdUntil > Date.now()) {
-          if (gameStatus !== 'countdown') {
+          if (gameStatusRef.current !== 'countdown') {
             setGameStatus('countdown')
             setCountdownSeconds(Math.max(1, Math.ceil((cdUntil - Date.now()) / 1000)))
           }
         } else if (
           session.status === 'live' &&
-          (gameStatus !== 'live' || questionIndex !== session.current_question_index)
+          (gameStatusRef.current !== 'live' || questionIndexRef.current !== session.current_question_index)
         ) {
           // Host started live quiz or moved to next question
           const { data: questions } = await supabase
@@ -307,18 +315,18 @@ export default function PlayerRoomPage({ params }: PageProps) {
             setHasAnswered(false)
             setAnswerResult(null)
           }
-        } else if (session.status === 'question_ended' && gameStatus !== 'question_ended') {
+        } else if (session.status === 'question_ended' && gameStatusRef.current !== 'question_ended') {
           setGameStatus('question_ended')
-        } else if (session.status === 'leaderboard' && gameStatus !== 'leaderboard') {
+        } else if (session.status === 'leaderboard' && gameStatusRef.current !== 'leaderboard') {
           setGameStatus('leaderboard')
-        } else if (session.status === 'ended' && gameStatus !== 'ended') {
+        } else if (session.status === 'ended' && gameStatusRef.current !== 'ended') {
           setGameStatus('ended')
         }
       } catch {}
     }, 1500)
 
     return () => clearInterval(syncInterval)
-  }, [isJoined, gameStatus, questionIndex, supabase])
+  }, [isJoined, supabase])
 
   // 5. Countdown timer when question is live
   useEffect(() => {
